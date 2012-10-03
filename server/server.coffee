@@ -5,7 +5,8 @@
 
 handle = (req, res) ->
     if req.method == 'GET'
-        sendFile(req.url, res);
+        url = if req.url == '/' then '/index.html' else req.url
+        sendFile(url, res);
     else
         slurp(req, (d) -> res.end(
             try
