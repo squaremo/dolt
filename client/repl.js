@@ -1,5 +1,7 @@
 window.onload = function() {
-    console.log('ok');
+
+    var XHR_DONE = 4;
+    
     var repl = document.getElementById('repl');
     var input, box;
 
@@ -28,7 +30,14 @@ window.onload = function() {
     }
 
     function sendToBeEvaluated(exp, k) {
-        setTimeout(function() { k({result: exp}); }, 3000);
+        var req = new XMLHttpRequest();
+        req.open('POST', '/', true);
+        req.onreadystatechange = function() {
+            if (req.readyState === XHR_DONE) {
+                k(JSON.parse(req.responseText));
+            }
+        };
+        req.send(exp);
     }
     
     prompt();
