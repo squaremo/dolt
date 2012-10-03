@@ -24,7 +24,7 @@ sendFile = (path, res) ->
             res.end())
 
 result = (d) -> JSON.stringify({result: d})
-error  = (e) -> JSON.stringify({error: e})
+error  = (e) -> JSON.stringify({error: e.toString()})
 
 slurp = (s, k) ->
     buf = ''

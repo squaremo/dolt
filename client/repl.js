@@ -23,7 +23,12 @@ window.onload = function() {
         output.appendChild(spin);
         sendToBeEvaluated(expression, function(result) {
             output.removeChild(spin);
-            output.innerText = result.result;
+            if (result.hasOwnProperty('result')) {
+                output.innerText = JSON.stringify(result.result);
+            }
+            else {
+                output.innerText = "Error: " + result.error;
+            }
         });
         repl.appendChild(output);
         return prompt();
