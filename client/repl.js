@@ -14,11 +14,21 @@ window.onload = function() {
     }
 
     function evaluate() {
-        result = box.value;
+        expression = box.value;
         output = document.createElement('pre');
-        output.innerText = result;
+        spin = document.createElement('img');
+        spin.src = 'ajax-loader.gif';
+        output.appendChild(spin);
+        sendToBeEvaluated(expression, function(result) {
+            output.removeChild(spin);
+            output.innerText = result.result;
+        });
         repl.appendChild(output);
         return prompt();
+    }
+
+    function sendToBeEvaluated(exp, k) {
+        setTimeout(function() { k({result: exp}); }, 3000);
     }
     
     prompt();
