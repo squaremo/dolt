@@ -1,0 +1,22 @@
+.number, .string, .boolean, .date {
+    color: blue;
+}
+
+.object:before { content: '{'; }
+.object:after  { content: '}'; }
+
+.object .item:after { content: ','; }
+.object .item:last-child:after { content: ''; }
+
+.object dt { display: inline; margin: 0; }
+.object dt:after { content: ':' }
+.object dd { display: inline; margin: 0; }
+
+.array:before { content: '['; }
+.array:after  { content: ']'; }
+
+.array .item:after { content: ','; }
+.array .item:last-child:after { content: ''; }
+
+.array dt { display: none; }
+.array dd { display: inline; margin: 0; }

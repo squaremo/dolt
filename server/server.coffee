@@ -23,7 +23,7 @@ sendFile = (path, res) ->
             res.writeHead(404, 'Not found')
             res.end())
 
-result = (d) -> JSON.stringify({result: d})
+result = (d) -> JSON.stringify({value: d})
 error  = (e) -> JSON.stringify({error: e.toString()})
 
 slurp = (s, k) ->

@@ -23,8 +23,8 @@ window.onload = function() {
         output.appendChild(spin);
         sendToBeEvaluated(expression, function(result) {
             output.removeChild(spin);
-            if (result.hasOwnProperty('result')) {
-                output.innerText = JSON.stringify(result.result);
+            if (result.hasOwnProperty('value')) {
+                output.appendChild(print(result.value));
             }
             else {
                 output.innerText = "Error: " + result.error;
@@ -43,6 +43,49 @@ window.onload = function() {
             }
         };
         req.send(exp);
+    }
+
+    function print(value) {
+        var t = typeof value;
+        switch (t) {
+        case 'string':
+        case 'number':
+        case 'boolean':
+        case 'date':
+            var elem = document.createElement('span');
+            elem.setAttribute('class', t);
+            elem.innerText = JSON.stringify(value);
+            return elem;
+        case 'object':
+            return (Array.isArray(value)) ?
+                printArray(value) :
+                printObject(value);
+        case 'function':
+            var elem = document.createElement('span');
+            elem.setAttribute('class', t);
+            elem.innerText = '[Function]';
+            return elem;
+        }
+    }
+
+    function printObject(obj, t) {
+        t = t || 'object';
+        var outer = document.createElement('dl');
+        outer.setAttribute('class', t);
+        for (var k in obj) {
+            var kelem = document.createElement('dt');
+            kelem.innerText = JSON.stringify(k);
+            var velem = document.createElement('dd');
+            velem.setAttribute('class', 'item');
+            velem.appendChild(print(obj[k]));
+            outer.appendChild(kelem);
+            outer.appendChild(velem);
+        }
+        return outer;
+    }
+
+    function printArray(arr) {
+        return printObject(arr, 'array');
     }
     
     prompt();
