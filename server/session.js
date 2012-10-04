@@ -20,15 +20,20 @@ Session.prototype.eval = function (expr) {
     var params = [];
     var args = [];
 
-    for (var i in env) {
-        params.push(i);
-        args.push(env[i]);
+    function bind(name, val) {
+        params.push(name);
+        args.push(val);
     }
 
+    for (var i in env) { bind(i, env[i]); }
+
+    var dollar;
     for (var i = 0; i < this.results.length; i++) {
-        params.push("$" + (i + 1));
-        args.push(this.results[i]);
+        dollar = this.results[i];
+        bind("$" + (i + 1), dollar);
     }
+
+    bind("$", dollar);
 
     params.push("return (" + expr + ")");
 

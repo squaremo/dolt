@@ -21,8 +21,8 @@ misc.post(url).then(function (session) {
     rl.prompt();
     rl.on("line", function (l) {
         misc.post(evalUrl, l).then(function (res) {
-            if ('result' in res) {
-                console.log("=> " + util.inspect(res.result));
+            if ('value' in res) {
+                console.log("=> " + util.inspect(res.value));
             }
             if ('error' in res) {
                 console.error(res.error);
