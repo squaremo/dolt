@@ -20,3 +20,7 @@
 
 .array dt { display: none; }
 .array dd { display: inline; margin: 0; }
+
+.string { color: green; }
+.string:before { content: '"'; }
+.string:after  { content: '"'; }
