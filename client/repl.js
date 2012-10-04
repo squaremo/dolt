@@ -39,7 +39,7 @@ window.onload = function() {
                 output.appendChild(assignment(result.variable, result.value));
             }
             else {
-                output.innerText = "Error: " + result.error;
+                output.textContent = "Error: " + result.error;
             }
         });
         repl.appendChild(output);
@@ -60,7 +60,7 @@ window.onload = function() {
     function assignment(symbol, value) {
         var outer = document.createElement('div');
         var assign = document.createElement('span');
-        assign.innerText = symbol + ' = ';
+        assign.textContent = symbol + ' = ';
         outer.appendChild(assign);
         outer.appendChild(print(value));
         return outer;
@@ -75,7 +75,7 @@ window.onload = function() {
         case 'date':
             var elem = document.createElement('span');
             elem.setAttribute('class', t);
-            elem.innerText = String(value);
+            elem.textContent = String(value);
             return elem;
         case 'object':
             return (Array.isArray(value)) ?
@@ -84,7 +84,7 @@ window.onload = function() {
         case 'function':
             var elem = document.createElement('span');
             elem.setAttribute('class', t);
-            elem.innerText = '[Function]';
+            elem.textContent = '[Function]';
             return elem;
         }
     }
@@ -95,7 +95,7 @@ window.onload = function() {
         outer.setAttribute('class', t);
         for (var k in obj) {
             var kelem = document.createElement('dt');
-            kelem.innerText = JSON.stringify(k);
+            kelem.textContent = JSON.stringify(k);
             var velem = document.createElement('dd');
             velem.setAttribute('class', 'item');
             velem.appendChild(print(obj[k]));
