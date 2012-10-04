@@ -4,6 +4,18 @@ window.onload = function() {
     
     var repl = document.getElementById('repl');
     var input, box;
+    var eval_uri;
+
+    var session = new XMLHttpRequest();
+    session.open('POST', '/api/session', true);
+    session.onreadystatechange = function() {
+        if (session.readyState == XHR_DONE) {
+            var result = JSON.parse(session.responseText);
+            eval_uri = result.eval_uri;
+            prompt();
+        }
+    }
+    session.send('');
 
     function prompt() {
         input = document.createElement('form');
@@ -36,7 +48,7 @@ window.onload = function() {
 
     function sendToBeEvaluated(exp, k) {
         var req = new XMLHttpRequest();
-        req.open('POST', '/', true);
+        req.open('POST', eval_uri, true);
         req.onreadystatechange = function() {
             if (req.readyState === XHR_DONE) {
                 k(JSON.parse(req.responseText));
@@ -54,7 +66,7 @@ window.onload = function() {
         case 'date':
             var elem = document.createElement('span');
             elem.setAttribute('class', t);
-            elem.innerText = JSON.stringify(value);
+            elem.innerText = String(value);
             return elem;
         case 'object':
             return (Array.isArray(value)) ?
@@ -87,6 +99,4 @@ window.onload = function() {
     function printArray(arr) {
         return printObject(arr, 'array');
     }
-    
-    prompt();
 }

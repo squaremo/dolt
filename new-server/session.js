@@ -36,7 +36,7 @@ Session.prototype.eval = function (expr) {
         return Function.apply(null, params).apply(null, args);
     }).then(function (res) {
         self.results.push(res);
-        return { result: res };
+        return { value: res };
     }, function (err) {
         return { error: err.toString() };
     });

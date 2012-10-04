@@ -5,7 +5,7 @@ var when = require('when');
 var Session = require('./session');
 var misc = require('./misc');
 
-var path = process.env.PWD + "/public";
+var path = process.env.PWD + "/../client";
 var host = process.env.VCAP_APP_HOST || '0.0.0.0';
 var port = process.env.VCAP_APP_PORT || 8000;
 
@@ -14,6 +14,7 @@ app.configure(function(){
     app.use(express.logger());
     app.use(app.router);
     app.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
+    app.use(express.static(path));
 });
 
 // Utility to hook a promise up to an Express response
