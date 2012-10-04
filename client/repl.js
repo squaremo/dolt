@@ -36,7 +36,7 @@ window.onload = function() {
         sendToBeEvaluated(expression, function(result) {
             output.removeChild(spin);
             if (result.hasOwnProperty('value')) {
-                output.appendChild(print(result.value));
+                output.appendChild(assignment(result.variable, result.value));
             }
             else {
                 output.innerText = "Error: " + result.error;
@@ -55,6 +55,15 @@ window.onload = function() {
             }
         };
         req.send(exp);
+    }
+
+    function assignment(symbol, value) {
+        var outer = document.createElement('div');
+        var assign = document.createElement('span');
+        assign.innerText = symbol + ' = ';
+        outer.appendChild(assign);
+        outer.appendChild(print(value));
+        return outer;
     }
 
     function print(value) {
