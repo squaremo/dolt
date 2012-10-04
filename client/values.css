@@ -2,24 +2,22 @@
     color: blue;
 }
 
+.object { margin-left: 2em; }
+
 .object:before { content: '{'; }
 .object:after  { content: '}'; }
+.object > .item { margin-left: 1em; }
 
-.object .item:after { content: ','; }
-.object .item:last-child:after { content: ''; }
+.object .value:after { content: ','; }
+.object :last-child > .value:after { content: ''; }
 
-.object dt { display: inline; margin: 0; }
-.object dt:after { content: ':' }
-.object dd { display: inline; margin: 0; }
+.object .key:after { content: ':' }
+.object .key { vertical-align: top; }
 
 .array:before { content: '['; }
 .array:after  { content: ']'; }
 
-.array > *:after { content: ','; }
-.array > *:last-child:after { content: ''; }
-
-.array > dt { display: none; }
-.array > dd { display: inline; margin: 0; }
+.array > tbody > .item > .key { display: none; }
 
 .string { color: green; }
 .string:before { content: '"'; }

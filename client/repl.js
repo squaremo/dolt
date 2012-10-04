@@ -31,7 +31,7 @@ $(function() {
 
     function evaluate() {
         var expression = current.find('input').val();
-        output = $('<pre/>');
+        output = $('<section/>');
         var s = spin.clone();
         output.append(s);
         current.replaceWith($('<kbd/>').addClass('history')
@@ -80,15 +80,18 @@ $(function() {
 
     function printObject(obj, t) {
         t = t || 'object';
-        var outer = $('<dl/>').addClass(t);
+        var outer = $('<table/>').addClass(t);
         for (var k in obj) {
-            outer.append($('<dt/>').text(JSON.stringify(k)))
-                .append($('<dd/>').append(print(obj[k])));
+            outer.append($('<tr/>').addClass('item')
+                         .append($('<td/>') .addClass('key')
+                                   .text(JSON.stringify(k)),
+                                 $('<td/>').addClass('value')
+                                   .append(print(obj[k]))))
         }
         return outer;
     }
 
     function printArray(arr) {
-        return printObject(arr, 'array');
+        return printObject(arr, 'object array');
     }
 });
