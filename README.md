@@ -1,4 +1,4 @@
 # Fun with REPLs
 
-    (cd server; coffee server.coffee) &
+    (cd server; node server) &
     open http://localhost:3000/
