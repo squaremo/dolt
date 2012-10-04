@@ -15,12 +15,19 @@
 .array:before { content: '['; }
 .array:after  { content: ']'; }
 
-.array .item:after { content: ','; }
-.array .item:last-child:after { content: ''; }
+.array > *:after { content: ','; }
+.array > *:last-child:after { content: ''; }
 
-.array dt { display: none; }
-.array dd { display: inline; margin: 0; }
+.array > dt { display: none; }
+.array > dd { display: inline; margin: 0; }
 
 .string { color: green; }
 .string:before { content: '"'; }
 .string:after  { content: '"'; }
+
+.result var:after { content: ' = '; }
+
+.history:before { content: '> '; }
+
+form.prompt input { border: 0; outline: 0; }
+form.prompt label:after { content: '> '; }

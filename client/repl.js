@@ -1,69 +1,62 @@
-window.onload = function() {
+$(function() {
 
     var XHR_DONE = 4;
     
-    var repl = document.getElementById('repl');
-    var input, box;
+    var repl = $('#repl');
+    var current;
     var eval_uri;
 
-    var session = new XMLHttpRequest();
-    session.open('POST', '/api/session', true);
-    session.onreadystatechange = function() {
-        if (session.readyState == XHR_DONE) {
-            var result = JSON.parse(session.responseText);
-            eval_uri = result.eval_uri;
-            prompt();
-        }
+    var spin = $('<img/>').attr('src', 'ajax-loader.gif');
+    var form = $('<form/>').addClass('prompt')
+        .append('<label/>')
+        .append('<input/>');
+
+    function catastrophe(error) {
+        console.error(error);
+        $('#errors').append($('<h3/>').addClass('fatal').text(error));
     }
-    session.send('');
+
+    $.post('/api/session', function(data) {
+        eval_uri = data.eval_uri;
+        prompt();
+    }, 'json');
 
     function prompt() {
-        input = document.createElement('form');
-        box = document.createElement('input');
-        input.appendChild(box);
-        input.onsubmit = evaluate;
-        repl.appendChild(input);
-        box.focus();
+        current = form.clone();
+        current.submit(evaluate);
+        repl.append(current);
+        current.find('input').focus();
         return false;
     }
 
     function evaluate() {
-        expression = box.value;
-        output = document.createElement('pre');
-        spin = document.createElement('img');
-        spin.src = 'ajax-loader.gif';
-        output.appendChild(spin);
+        var expression = current.find('input').val();
+        output = $('<pre/>');
+        var s = spin.clone();
+        output.append(s);
+        current.replaceWith($('<kbd/>').addClass('history')
+                            .append('<code/>').text(expression));
         sendToBeEvaluated(expression, function(result) {
-            output.removeChild(spin);
+            s.remove();
             if (result.hasOwnProperty('value')) {
-                output.appendChild(assignment(result.variable, result.value));
+                output.append(assignment(result.variable, result.value));
             }
             else {
-                output.textContent = "Error: " + result.error;
+                output.append($('<span/>').text("Error: " + result.error));
             }
         });
-        repl.appendChild(output);
+        repl.append(output);
         return prompt();
     }
 
     function sendToBeEvaluated(exp, k) {
-        var req = new XMLHttpRequest();
-        req.open('POST', eval_uri, true);
-        req.onreadystatechange = function() {
-            if (req.readyState === XHR_DONE) {
-                k(JSON.parse(req.responseText));
-            }
-        };
-        req.send(exp);
+        $.post(eval_uri, exp, k, 'json');
     }
 
     function assignment(symbol, value) {
-        var outer = document.createElement('div');
-        var assign = document.createElement('span');
-        assign.textContent = symbol + ' = ';
-        outer.appendChild(assign);
-        outer.appendChild(print(value));
-        return outer;
+        return $('<div/>').addClass('result')
+            .append($('<var/>').text(symbol))
+            .append(print(value));
     }
 
     function print(value) {
@@ -72,35 +65,25 @@ window.onload = function() {
         case 'string':
         case 'number':
         case 'boolean':
+            return $('<code/>').addClass(t).text(String(value))
         case 'date':
-            var elem = document.createElement('span');
-            elem.setAttribute('class', t);
-            elem.textContent = String(value);
-            return elem;
+            return $('<code/>')
+                .append($('<time/>').addClass(t).text(String(value)));
         case 'object':
             return (Array.isArray(value)) ?
                 printArray(value) :
                 printObject(value);
         case 'function':
-            var elem = document.createElement('span');
-            elem.setAttribute('class', t);
-            elem.textContent = '[Function]';
-            return elem;
+            return $('<code/>').addClass(t).text('[Function]');
         }
     }
 
     function printObject(obj, t) {
         t = t || 'object';
-        var outer = document.createElement('dl');
-        outer.setAttribute('class', t);
+        var outer = $('<dl/>').addClass(t);
         for (var k in obj) {
-            var kelem = document.createElement('dt');
-            kelem.textContent = JSON.stringify(k);
-            var velem = document.createElement('dd');
-            velem.setAttribute('class', 'item');
-            velem.appendChild(print(obj[k]));
-            outer.appendChild(kelem);
-            outer.appendChild(velem);
+            outer.append($('<dt/>').text(JSON.stringify(k)))
+                .append($('<dd/>').append(print(obj[k])));
         }
         return outer;
     }
@@ -108,4 +91,4 @@ window.onload = function() {
     function printArray(arr) {
         return printObject(arr, 'array');
     }
-}
+});
