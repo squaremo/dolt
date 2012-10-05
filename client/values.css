@@ -27,5 +27,5 @@
 
 .history:before { content: '> '; }
 
-form.prompt input { border: 0; outline: 0; }
+form.prompt input { border: 0; outline: 0; width: 90%; }
 form.prompt label:after { content: '> '; }
