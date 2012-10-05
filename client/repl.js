@@ -62,20 +62,24 @@ $(function() {
     function print(value) {
         var t = typeof value;
         switch (t) {
-        case 'string':
-        case 'number':
-        case 'boolean':
-            return $('<code/>').addClass(t).text(String(value))
         case 'date':
             return $('<code/>')
                 .append($('<time/>').addClass(t).text(String(value)));
         case 'object':
-            return (Array.isArray(value)) ?
-                printArray(value) :
-                printObject(value);
+            if (value === null) {
+                t = 'null';
+            } else {
+                return (Array.isArray(value)) ?
+                    printArray(value) :
+                    printObject(value);
+            }
+            break;
         case 'function':
-            return $('<code/>').addClass(t).text('[Function]');
+            value = '[Function]';
+            break;
         }
+
+        return $('<code/>').addClass(t).text(String(value));
     }
 
     function printObject(obj, t) {
