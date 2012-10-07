@@ -36,7 +36,11 @@ function readAll(stream) {
 }
 
 // Do an HTTP request, returning the promised JSON response
-function httpRequest(opts, body) {
+function httpRequest(method, url, headers, body, redirect_count) {
+    var opts = urlmod.parse(url);
+    opts.method = method;
+    opts.headers = headers || {};
+
     // XXX send Accept header
     var proto = protocols[opts.protocol];
     if (!proto) {
@@ -49,6 +53,14 @@ function httpRequest(opts, body) {
         if (status >= 200 && status <= 299) {
             // XXX check that response is json
             d.resolve(readAll(res));
+        } else if (status >= 300 && status <= 399 && res.headers.location) {
+            // Redirect
+            if (redirect_count == 5) {
+                d.reject("Too many redirects");
+            } else {
+                d.resolve(httpRequest(method, res.headers.location, headers,
+                                      body, (redirect_count || 0) + 1));
+            }
         } else {
             d.reject("Response status " + status);
         }
@@ -65,31 +77,25 @@ function httpRequest(opts, body) {
 
 // Do a GET, returning the promised JSON response
 function get(url) {
-    var opts = urlmod.parse(url);
-    opts.method = 'GET';
-    opts.headers = {};
-
-    return httpRequest(opts);
+    return httpRequest('GET', url);
 }
 
 // Do a POST, returning the promised JSON response
 function post(url, body) {
-    var opts = urlmod.parse(url);
-    opts.method = 'POST';
-    opts.headers = {};
+    var headers = {}
 
     if (typeof(body) === 'undefined') {
         body = new Buffer(0);
     } else if (typeof(body) === 'string') {
         body = new Buffer(body, "utf8");
-        opts.headers['Content-Type'] = 'text/plain; charset=UTF-8';
+        headers['Content-Type'] = 'text/plain; charset=UTF-8';
     } else {
         body = new Buffer(JSON.stringify(body, "utf8"));
-        opts.headers['Content-Type'] = 'application/json; charset=UTF-8';
+        headers['Content-Type'] = 'application/json; charset=UTF-8';
     }
 
-    opts.headers['Content-Length'] = body.length;
-    return httpRequest(opts, body);
+    headers['Content-Length'] = body.length;
+    return httpRequest('POST', url, headers, body);
 }
 
 module.exports.readAll = readAll;
