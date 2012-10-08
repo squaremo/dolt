@@ -8,5 +8,11 @@
         "when": "",
         "node-uuid": "",
         "noodle": "git+https://github.com/squaremo/noodle.git"
+    },
+    "devDependencies": {
+        "nodeunit": ""
+    },
+    "scripts" : {
+        "test" : "node ./node_modules/nodeunit/bin/nodeunit test"
     }
 }
