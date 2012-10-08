@@ -1,7 +1,4 @@
 $(function() {
-
-    var XHR_DONE = 4;
-    
     var repl = $('#repl');
     var current;
     var eval_uri;
