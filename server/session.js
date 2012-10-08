@@ -93,6 +93,11 @@ Session.prototype.eval = function (expr) {
             return res;
         }
     }).then(function (res) {
+        // Trying to turn a Buffer into JSON is a bad idea
+        if (Buffer.isBuffer(res)) {
+            res = res.toString('base64');
+        }
+
         return { value: res, variable: '$' + self.results.length };
     }, function (err) {
         return { error: err.toString() };
