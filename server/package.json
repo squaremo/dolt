@@ -6,7 +6,7 @@
         "express": "",
         "connect": "",
         "when": "",
-        "node-uuid": ""
+        "node-uuid": "",
+        "noodle": "git+https://github.com/squaremo/noodle.git"
     }
 }
-
