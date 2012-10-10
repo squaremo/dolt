@@ -2,14 +2,20 @@
     color: blue;
 }
 
-.object { margin-left: 2em; }
+.composite { margin-left: 2em; }
 
 .object:before { content: '{'; }
 .object:after  { content: '}'; }
-.object > .item { margin-left: 1em; }
+table.composite > .item { margin-left: 1em; }
 
-.object .value:after { content: ','; }
-.object :last-child > .value:after { content: ''; }
+/* Compact forms */
+ol.array > .item, ul.object > .item { margin-left: 0em; }
+ol.array, ul.object { margin-left: 0em; padding: 0; list-style: none; }
+ol.array > li, ul.object > li { display: inline-block; }
+ol.array .composite, ul.object .composite { display: inline-block; }
+
+.composite .value:after { content: ','; }
+.composite :last-child > .value:after { content: ''; }
 
 .object .key:after { content: ':' }
 .object .key { vertical-align: top; }
@@ -17,7 +23,7 @@
 .array:before { content: '['; }
 .array:after  { content: ']'; }
 
-.array > tbody > .item > .key { display: none; }
+.array > .item > .key { display: none; }
 
 .string { color: green; }
 .string:before { content: '"'; }
