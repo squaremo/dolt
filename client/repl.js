@@ -68,12 +68,12 @@ $(function() {
         case 'object':
             if (value === null) {
                 t = 'null';
-            } else {
-                return (Array.isArray(value)) ?
-                    printArray(value) :
-                    printObject(value);
+                break;
             }
-            break;
+            else {
+                return printComposite(
+                    value, (Array.isArray(value)) ? 'array' : 'object');
+            }
         case 'function':
             value = '[Function]';
             break;
@@ -82,8 +82,30 @@ $(function() {
         return $('<code/>').addClass(t).text(String(value));
     }
 
-    function printObject(obj, t) {
-        t = t || 'object';
+    function printComposite(obj, t) {
+        return ((isCompact(obj)) ? printCompact(obj, t) : printFull(obj, t)).addClass('composite');
+    }
+
+    // totally ad-hoc. Other methods: items are ground types and there
+    // are fewer than x (trickier for objects than arrays, since keys
+    // can be long ..); only do this for arrays; etc.
+    function isCompact(obj) {
+        return JSON.stringify(obj).length < 30;
+    }
+
+    function printCompact(obj, t) {
+        var outer = $((t === 'array') ? '<ol/>' : '<ul/>').addClass(t);
+        for (var k in obj) {
+            outer.append($('<li/>').addClass('item')
+                         .append($('<span/>').addClass('key')
+                                   .text(JSON.stringify(k)),
+                                 $('<span/>').addClass('value')
+                                   .append(print(obj[k]))))
+        }
+        return outer;
+    }
+
+    function printFull(obj, t) {
         var outer = $('<table/>').addClass(t);
         for (var k in obj) {
             outer.append($('<tr/>').addClass('item')
@@ -96,6 +118,6 @@ $(function() {
     }
 
     function printArray(arr) {
-        return printObject(arr, 'object array');
+        return printObject(arr, 'array');
     }
 });
