@@ -101,7 +101,7 @@ var tableControl = (function() {
         this.sortedby = key;
         this.sortdescending = descending;
         this.colheaders[this.sortedby].addClass(
-                                     descending ? "ascending" : "descending");
+                                       descending ? "descending" : "ascending");
 
         this.populateTBody();
     };
