@@ -1,3 +1,7 @@
+/* Result view buttons */
+.treeview .treebtn { display: none; }
+.tableview .tablebtn { display: none; }
+
 .number, .string, .boolean, .null, .date {
     color: blue;
 }
@@ -35,3 +39,7 @@ ol.array .composite, ul.object .composite { display: inline-block; }
 
 form.prompt input { border: 0; outline: 0; width: 90%; }
 form.prompt label:after { content: '> '; }
+
+/* Table stuff */
+th.ascending:after { content: '\2193'; }
+th.descending:after { content: '\2191'; }
