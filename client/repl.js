@@ -211,7 +211,7 @@ var ResultControl = {
     install: function (containers, symbol, data) {
         containers.each(function () {
             var container = $(this);
-            var valdiv = $('<div class="value"/>');
+            var valdiv = $('<div class="resultval"/>');
 
             function showTree() {
                 TreeControl.install(valdiv, data);
@@ -226,7 +226,7 @@ var ResultControl = {
             }
 
             container.empty()
-                .append($('<var/>').text(symbol))
+                .append($('<var/>').addClass('resultvar').text(symbol))
                 .append($('<a href="#" class="treebtn">tree</a>').click(showTree))
                 .append($('<a href="#" class="tablebtn">table</a>').click(showTable))
                 .append(valdiv);

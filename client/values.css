@@ -1,3 +1,10 @@
+form.prompt input { border: 0; outline: 0; width: 90%; }
+form.prompt label:after { content: '> '; }
+
+.history:before { content: '> '; }
+
+.resultvar:after { content: ' = '; }
+
 /* Result view buttons */
 .treeview .treebtn { display: none; }
 .tableview .tablebtn { display: none; }
@@ -5,6 +12,8 @@
 .number, .string, .boolean, .null, .date {
     color: blue;
 }
+
+/* Tree view */
 
 .composite { margin-left: 2em; }
 
@@ -33,13 +42,6 @@ ol.array .composite, ul.object .composite { display: inline-block; }
 .string:before { content: '"'; }
 .string:after  { content: '"'; }
 
-.result var:after { content: ' = '; }
-
-.history:before { content: '> '; }
-
-form.prompt input { border: 0; outline: 0; width: 90%; }
-form.prompt label:after { content: '> '; }
-
-/* Table stuff */
+/* Table view */
 th.ascending:after { content: ' \25be'; }
 th.descending:after { content: ' \25b4'; }
