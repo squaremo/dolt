@@ -1,4 +1,4 @@
-var tableControl = (function() {
+var TableControl = (function() {
     function sortedKeys(a) {
         var keys = {};
 
@@ -95,13 +95,13 @@ var tableControl = (function() {
         this.model.sortByKey(key, descending);
 
         if (this.sortedby !== undefined) {
-            this.colheaders[this.sortedby].removeClass("ascending descending");
+            this.colheaders[this.sortedby].removeClass('ascending descending');
         }
 
         this.sortedby = key;
         this.sortdescending = descending;
         this.colheaders[this.sortedby].addClass(
-                                       descending ? "descending" : "ascending");
+                                       descending ? 'descending' : 'ascending');
 
         this.populateTBody();
     };
@@ -128,12 +128,16 @@ var tableControl = (function() {
         });
     };
 
-    return function (data) {
-        return new View(new Model(data)).table;
+    return {
+        install: function (containers, data) {
+            containers.each(function () {
+                $(this).empty().append(new View(new Model(data)).table);
+            });
+        }
     };
 })();
 
-var treeControl = (function () {
+var TreeControl = (function () {
     function printValue(value) {
         var t = typeof value;
         switch (t) {
@@ -196,29 +200,41 @@ var treeControl = (function () {
         return printObject(arr, 'array');
     }
 
-    return function (data) {
-        return printValue(data);
+    return {
+        install: function (containers, data) {
+            containers.empty().append(printValue(data));
+        }
     };
 })();
 
-function resultControl(symbol, value) {
-    var resdiv = $('<div class="result treeview"/>');
-    var valdiv = $('<div class="value"/>').append(treeControl(value));
+var ResultControl = {
+    install: function (containers, symbol, data) {
+        containers.each(function () {
+            var container = $(this);
+            var valdiv = $('<div class="value"/>');
 
-    return resdiv
-        .append($('<var/>').text(symbol))
-        .append($('<a href="#" class="treebtn">tree</a>').click(function () {
-            valdiv.empty().append(treeControl(value));
-            resdiv.removeClass('tableview').addClass('treeview');
-            return false;
-        }))
-        .append($('<a href="#" class="tablebtn">table</a>').click(function () {
-            valdiv.empty().append(tableControl(value));
-            resdiv.removeClass('treeview').addClass('tableview');
-            return false;
-        }))
-        .append(valdiv);
-}
+            function showTree() {
+                TreeControl.install(valdiv, data);
+                container.removeClass('tableview').addClass('treeview');
+                return false;
+            }
+
+            function showTable() {
+                TableControl.install(valdiv, data);
+                container.removeClass('treeview').addClass('tableview');
+                return false;
+            }
+
+            container.empty()
+                .append($('<var/>').text(symbol))
+                .append($('<a href="#" class="treebtn">tree</a>').click(showTree))
+                .append($('<a href="#" class="tablebtn">table</a>').click(showTable))
+                .append(valdiv);
+
+            showTree();
+        });
+    }
+};
 
 $(function() {
     var repl = $('#repl');
@@ -250,21 +266,25 @@ $(function() {
 
     function evaluate() {
         var expression = current.find('input').val();
-        output = $('<section/>');
-        var s = spin.clone();
-        output.append(s);
         current.replaceWith($('<kbd/>').addClass('history')
                             .append('<code/>').text(expression));
-        sendToBeEvaluated(expression, function(result) {
-            s.remove();
+
+        var output = $('<section/>').append(spin.clone());
+        repl.append(output);
+
+        sendToBeEvaluated(expression, function (result) {
+            output.empty();
+
             if (result.hasOwnProperty('value')) {
-                output.append(resultControl(result.variable, result.value));
+                var resdiv = $('<div/>').addClass('result');
+                output.append(resdiv);
+                ResultControl.install(resdiv, result.variable, result.value);
             }
             else {
                 output.append($('<span/>').text("Error: " + result.error));
             }
         });
-        repl.append(output);
+
         return prompt();
     }
 
