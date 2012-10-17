@@ -41,5 +41,5 @@ form.prompt input { border: 0; outline: 0; width: 90%; }
 form.prompt label:after { content: '> '; }
 
 /* Table stuff */
-th.ascending:after { content: '\2193'; }
-th.descending:after { content: '\2191'; }
+th.ascending:after { content: ' \25be'; }
+th.descending:after { content: ' \25b4'; }
