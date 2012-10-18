@@ -269,24 +269,27 @@ var ResultControl = {
     install: function (containers, symbol, data) {
         containers.each(function () {
             var container = $(this);
+            var buttonspan = $('<span/>');
             var valdiv = $('<div class="resultval"/>');
+            var button = '<a href="#" class="button"/>';
 
             function showTree() {
+                buttonspan.empty().append($(button).text('view as table'))
+                    .click(showTable);
                 TreeControl.install(valdiv, data);
-                container.removeClass('tableview').addClass('treeview');
                 return false;
             }
 
             function showTable() {
+                buttonspan.empty().append($(button).text('view as tree'))
+                    .click(showTree);
                 TableControl.install(valdiv, data);
-                container.removeClass('treeview').addClass('tableview');
                 return false;
             }
 
             container.empty()
                 .append($('<var/>').addClass('resultvar').text(symbol))
-                .append($('<a href="#" class="treebtn">tree</a>').click(showTree))
-                .append($('<a href="#" class="tablebtn">table</a>').click(showTable))
+                .append(buttonspan)
                 .append(valdiv);
 
             showTree();
