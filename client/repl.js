@@ -18,18 +18,9 @@ var TableControl = (function() {
         return sorted;
     }
 
-    function Model(data) {
-        this.keys = sortedKeys(data);
-        this.rows = data;
-    }
-
-    Model.prototype.rotate = function () {
-        this.rows.push(this.rows.shift());
-    };
-
-    Model.prototype.sortByKey = function (key, descending) {
+    function sortByKey(rows, key, descending) {
         var i = 0;
-        var enumrows = this.rows.map(function (row) {
+        var enumrows = rows.map(function (row) {
             return {
                 index: i++,
                 row: row
@@ -71,12 +62,15 @@ var TableControl = (function() {
             return (a.index - b.index) * descending;
         });
 
-        this.rows = enumrows.map(function (er) { return er.row; });
+        return enumrows.map(function (er) { return er.row; });
     };
 
-    function View(container, model) {
-        this.container = container;
-        this.model = model;
+    function View(data) {
+        this.keys = sortedKeys(data);
+        this.rows = data;
+    }
+
+    View.prototype.install = function (container) {
         this.tbody = $('<tbody/>');
         this.colheaders = {};
 
@@ -92,12 +86,12 @@ var TableControl = (function() {
             'max-width': maxwidth
         });
 
-        this.container.empty().append(bdiv.append(btable));
+        container.empty().append(bdiv.append(btable));
 
         // Construct the column headers
         var hrow = $('<tr/>');
-        for (var i = 0; i < model.keys.length; i++) {
-            hrow.append(this.makeColHeader(model.keys[i]));
+        for (var i = 0; i < this.keys.length; i++) {
+            hrow.append(this.makeColHeader(this.keys[i]));
         }
 
         var thead = $('<thead/>').append(hrow);
@@ -150,7 +144,7 @@ var TableControl = (function() {
 
     View.prototype.sortOn = function (key) {
         var descending = (this.sortedby === key && !this.sortdescending);
-        this.model.sortByKey(key, descending);
+        this.rows = sortByKey(this.rows, key, descending);
 
         if (this.sortedby !== undefined) {
             this.colheaders[this.sortedby].removeClass('ascending descending');
@@ -175,13 +169,11 @@ var TableControl = (function() {
         var tbody = this.tbody;
         tbody.empty();
 
-        var rows = this.model.rows, keys = this.model.keys;
         var colwidths = this.colwidths;
-
-        for (var i = 0; i < rows.length; i++) {
+        for (var i = 0; i < this.rows.length; i++) {
             var row = $('<tr/>');
-            for (var j = 0; j < keys.length; j++) {
-                var val = rows[i][keys[j]];
+            for (var j = 0; j < this.keys.length; j++) {
+                var val = this.rows[i][this.keys[j]];
                 var td =$('<td>').text(JSON.stringify(val));
                 if (colwidths) { td.css('width', colwidths[j]); }
                 row.append(td);
@@ -197,7 +189,7 @@ var TableControl = (function() {
     return {
         install: function (containers, data) {
             containers.each(function () {
-                new View($(this), new Model(data));
+                new View(data).install($(this));
             });
         }
     };
