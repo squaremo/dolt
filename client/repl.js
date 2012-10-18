@@ -74,20 +74,78 @@ var TableControl = (function() {
         this.rows = enumrows.map(function (er) { return er.row; });
     };
 
-    function View(model) {
+    function View(container, model) {
+        this.container = container;
         this.model = model;
-        this.table = $('<table/>');
         this.tbody = $('<tbody/>');
         this.colheaders = {};
 
+        // The maximum width of the table, based on the viewport size
+        var maxwidth = $(window).width() * 0.95
+
+        // btable is the table that will contain the tbody; bdiv wraps
+        // btable.
+        var btable = $('<table/>').css('table-layout', 'auto');
+        var bdiv = $('<div/>').css({
+            overflow: 'auto',
+            'max-height': $(window).height() * 0.8,
+            'max-width': maxwidth
+        });
+
+        this.container.empty().append(bdiv.append(btable));
+
+        // Construct the column headers
         var hrow = $('<tr/>');
         for (var i = 0; i < model.keys.length; i++) {
             hrow.append(this.makeColHeader(model.keys[i]));
         }
 
-        this.table.append($('<thead/>').append(hrow)).append(this.tbody);
+        var thead = $('<thead/>').append(hrow);
+        btable.append(thead).append(this.tbody);
 
         this.populateTBody();
+
+        // Now that the browser has laid out the table, freeze the
+        // column widths.
+        var colwidths = this.colwidths = [];
+        var totalwidth = 0;
+        hrow.children('th').each(function () {
+            var th = $(this);
+            var width = th.width();
+            colwidths.push(width);
+            totalwidth += width;
+        });
+
+        var tablecss = {
+            'table-layout': 'fixed',
+            'width': totalwidth
+        };
+
+        btable.css(tablecss);
+
+        // Construct a separate table to contain the column headers
+        // (so that the body table can be scrolled vertically while
+        // the column headers remain visible).  hdiv contains this
+        // table.  The padding right is a fudge to avoid an anomaly
+        // when the table is scrolled to the extreme right.
+        var htable = $('<table/>').css(tablecss).css('padding-right', 100).append(thead);
+        var hdiv = $('<div/>').css({
+            overflow: 'hidden',
+            'max-width': maxwidth
+        }).append(htable).insertBefore(bdiv);
+
+        hrow.children('th').each(function (i) {
+            $(this).css('width', colwidths[i]);
+        });
+
+        btable.children('tbody').children('tr:first').children('td').each(function (i) {
+            $(this).css('width', colwidths[i]);
+        });
+
+        // Lock the scrolling of the header table to the body table.
+        bdiv.scroll(function () {
+            hdiv.scrollLeft(bdiv.scrollLeft());
+        });
     }
 
     View.prototype.sortOn = function (key) {
@@ -117,21 +175,29 @@ var TableControl = (function() {
         var tbody = this.tbody;
         tbody.empty();
 
-        var model = this.model;
-        model.rows.forEach(function (mrow) {
+        var rows = this.model.rows, keys = this.model.keys;
+        var colwidths = this.colwidths;
+
+        for (var i = 0; i < rows.length; i++) {
             var row = $('<tr/>');
-            model.keys.forEach(function (key) {
-                row.append($('<td>').text(JSON.stringify(mrow[key])));
-            });
+            for (var j = 0; j < keys.length; j++) {
+                var val = rows[i][keys[j]];
+                var td =$('<td>').text(JSON.stringify(val));
+                if (colwidths) { td.css('width', colwidths[j]); }
+                row.append(td);
+            }
 
             tbody.append(row);
-        });
+
+            // We only need to add width properties on the first row
+            colwidths = null;
+        }
     };
 
     return {
         install: function (containers, data) {
             containers.each(function () {
-                $(this).empty().append(new View(new Model(data)).table);
+                new View($(this), new Model(data));
             });
         }
     };
