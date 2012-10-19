@@ -1,21 +1,27 @@
 var TableControl = (function() {
-    function sortedKeys(a) {
+    function findColumns(data) {
+        // Find the set of keys from the data elements
         var keys = {};
-
-        for (var i = 0; i < a.length; i++) {
-            for (var k in a[i]) {
+        for (var i = 0; i < data.length; i++) {
+            for (var k in data[i]) {
                 keys[k] = true;
             }
         }
 
-        var sorted = [];
-
+        // Turn that set into a sorted list
+        var cols = [];
         for (var k in keys) {
-            sorted.push(k);
+            cols.push(k);
         }
 
-        sorted.sort();
-        return sorted;
+        cols.sort();
+
+        // Construct the column objects
+        for (var i = 0; i < cols.length; i++) {
+            cols[i] = { key: cols[i] };
+        }
+
+        return cols;
     }
 
     function sortByKey(rows, key, descending) {
@@ -66,47 +72,46 @@ var TableControl = (function() {
     };
 
     function View(data) {
-        this.keys = sortedKeys(data);
+        this.cols = findColumns(data);
         this.rows = data;
     }
 
-    View.prototype.install = function (container) {
+    View.prototype.install = function (container, buttons) {
+        var view = this;
+        this.container = container.empty();
         this.tbody = $('<tbody/>');
-        this.colheaders = {};
 
         // The maximum width of the table, based on the viewport size
         var maxwidth = $(window).width() * 0.95
 
         // btable is the table that will contain the tbody; bdiv wraps
         // btable.
-        var btable = $('<table/>').css('table-layout', 'auto');
+        this.btable = $('<table/>').css('table-layout', 'auto');
         var bdiv = $('<div/>').css({
             overflow: 'auto',
             'max-height': $(window).height() * 0.8,
             'max-width': maxwidth
         });
-
-        container.empty().append(bdiv.append(btable));
+        container.append(bdiv.append(this.btable));
 
         // Construct the column headers
         var hrow = $('<tr/>');
-        for (var i = 0; i < this.keys.length; i++) {
-            hrow.append(this.makeColHeader(this.keys[i]));
+        for (var i = 0; i < this.cols.length; i++) {
+            hrow.append(this.makeColumnHeader(this.cols[i]));
         }
 
-        var thead = $('<thead/>').append(hrow);
-        btable.append(thead).append(this.tbody);
+        this.thead = $('<thead/>').append(hrow);
+        this.btable.append(this.thead).append(this.tbody);
 
         this.populateTBody();
 
         // Now that the browser has laid out the table, freeze the
         // column widths.
-        var colwidths = this.colwidths = [];
         var totalwidth = 0;
-        hrow.children('th').each(function () {
+        hrow.children('th').each(function (i) {
             var th = $(this);
             var width = th.width();
-            colwidths.push(width);
+            view.cols[i].width = width;
             totalwidth += width;
         });
 
@@ -115,26 +120,27 @@ var TableControl = (function() {
             'width': totalwidth
         };
 
-        btable.css(tablecss);
+        this.btable.css(tablecss);
 
         // Construct a separate table to contain the column headers
         // (so that the body table can be scrolled vertically while
         // the column headers remain visible).  hdiv contains this
         // table.  The padding right is a fudge to avoid an anomaly
         // when the table is scrolled to the extreme right.
-        var htable = $('<table/>').css(tablecss).css('padding-right', 100).append(thead);
+        this.htable = $('<table/>').css(tablecss).css('padding-right', 100).append(this.thead);
         var hdiv = $('<div/>').css({
             overflow: 'hidden',
             'max-width': maxwidth
-        }).append(htable).insertBefore(bdiv);
+        }).append(this.htable).insertBefore(bdiv);
 
-        hrow.children('th').each(function (i) {
-            $(this).css('width', colwidths[i]);
-        });
+        function setWidths(elems) {
+            elems.each(function (i) {
+                $(this).css('width', view.cols[i].width);
+            });
+        }
 
-        btable.children('tbody').children('tr:first').children('td').each(function (i) {
-            $(this).css('width', colwidths[i]);
-        });
+        setWidths(this.thead.children('tr').children('th'));
+        setWidths(this.tbody.children('tr:first').children('td'));
 
         // Lock the scrolling of the header table to the body table.
         bdiv.scroll(function () {
@@ -142,28 +148,43 @@ var TableControl = (function() {
         });
     }
 
-    View.prototype.sortOn = function (key) {
-        var descending = (this.sortedby === key && !this.sortdescending);
-        this.rows = sortByKey(this.rows, key, descending);
+    View.prototype.sortOn = function (col) {
+        var descending = (this.sortedby === col && !this.sortdescending);
+        this.rows = sortByKey(this.rows, col.key, descending);
 
         if (this.sortedby !== undefined) {
-            this.colheaders[this.sortedby].removeClass('ascending descending');
+            this.sortedby.header.removeClass('ascending descending');
         }
 
-        this.sortedby = key;
+        this.sortedby = col;
         this.sortdescending = descending;
-        this.colheaders[this.sortedby].addClass(
-                                       descending ? 'descending' : 'ascending');
-
+        this.setSortIndicator();
         this.populateTBody();
     };
 
-    View.prototype.makeColHeader = function (key) {
-        var view = this;
-        return view.colheaders[key] = $('<th>').text(key).click(function() {
-            view.sortOn(key);
-        });
+    View.prototype.setSortIndicator = function (col) {
+        this.sortedby.header.addClass(this.sortdescending ? 'descending'
+                                                          : 'ascending');
     };
+
+    View.prototype.makeColumnHeader = function (col) {
+        var view = this;
+        col.header = $('<th>').text(col.key).click(function() {
+            view.sortOn(col);
+        });
+        if (col.width) { col.header.css('width', col.width); }
+        if (this.sortedby === col) { this.setSortIndicator(); }
+        return col.header;
+    };
+
+    View.prototype.makeCell = function (col, row) {
+        var val = this.rows[row][col.key];
+        var td = $('<td>').text(val === undefined ? "\xa0" // &nbsp;
+                                                  : JSON.stringify(val));
+        // We only need to add width properties on the first row
+        if (!row && col.width) { td.css('width', col.width); }
+        return td;
+    }
 
     View.prototype.populateTBody = function () {
         var tbody = this.tbody;
@@ -172,25 +193,122 @@ var TableControl = (function() {
         var colwidths = this.colwidths;
         for (var i = 0; i < this.rows.length; i++) {
             var row = $('<tr/>');
-            for (var j = 0; j < this.keys.length; j++) {
-                var val = this.rows[i][this.keys[j]];
-                var td =$('<td>').text(JSON.stringify(val));
-                if (colwidths) { td.css('width', colwidths[j]); }
-                row.append(td);
+            for (var j = 0; j < this.cols.length; j++) {
+                var col = this.cols[j];
+                if (col.header) { row.append(this.makeCell(col, i)); }
             }
 
             tbody.append(row);
-
-            // We only need to add width properties on the first row
-            colwidths = null;
         }
     };
 
-    return {
-        install: function (containers, data) {
-            containers.each(function () {
-                new View(data).install($(this));
+    View.prototype.selectColumns = function () {
+        var columnsform = $('<form/>');
+        this.container.prepend(columnsform);
+
+        for (var i = 0; i < this.cols.length; i++) {
+            var col = this.cols[i];
+            columnsform.append($('<label/>')
+                                   .append(this.columnShownCheckbox(col))
+                                   .append(' ' + col.key + ' '));
+        }
+
+        columnsform.append('<input type="submit" value="Done"/>');
+
+        var view = this;
+        columnsform.submit(function () {
+            columnsform.remove();
+            view.columnsbutton.css('display', 'inline');
+            return false;
+        });
+    };
+
+    View.prototype.columnShownCheckbox = function (col) {
+        var view = this;
+        var checkbox = $('<input type="checkbox"/>');
+        if (col.header) { checkbox.attr("checked", "checked"); }
+        checkbox.change(function () {
+            var show = !!checkbox.attr("checked");
+            if (show) {
+                view.showColumn(col);
+            }
+            else {
+                view.unshowColumn(col);
+            }
+            view.recalcTotalWidth();
+        });
+        return checkbox;
+    };
+
+    View.prototype.unshowColumn = function (col) {
+        var index = this.shownColumnIndex(col);
+        col.header.remove();
+        col.header = null;
+        this.tbody.children('tr').each(function () {
+            $(this).children().eq(index).remove();
+        });
+    };
+
+    View.prototype.showColumn = function (col) {
+        var index = this.shownColumnIndex(col);
+
+        // Insert el under parent at index
+        function insert(parent, el) {
+            if (index) {
+                el.insertAfter($(parent).children().eq(index-1));
+            }
+            else {
+                $(parent).prepend(el);
+            }
+        }
+
+        var view = this;
+        this.thead.children('tr').each(function () {
+            insert(this, view.makeColumnHeader(col));
+        });
+        this.tbody.children('tr').each(function (i) {
+            insert(this, view.makeCell(col, i));
+        });
+    };
+
+    // Return the number of shown columns before the given column
+    View.prototype.shownColumnIndex = function (col) {
+        var res = 0;
+        for (var i = 0; i < this.cols.length; i++) {
+            if (this.cols[i] === col) { return res; }
+            if (this.cols[i].header) { res++; }
+        }
+        throw "couldn't find column";
+    };
+
+    View.prototype.recalcTotalWidth = function () {
+        var totalwidth = 0;
+        for (var i = 0; i < this.cols.length; i++) {
+            if (this.cols[i].header) {
+                totalwidth += this.cols[i].width;
+            }
+        }
+
+        this.btable.css('width', totalwidth);
+        this.htable.css('width', totalwidth);
+    }
+
+    View.prototype.installButtons = function (buttons) {
+        var view = this;
+        this.columnsbutton = $('<a href="#" class="button"/>')
+            .text('select columns')
+            .click(function () {
+                view.columnsbutton.css('display', 'none');
+                view.selectColumns();
             });
+        buttons.append(this.columnsbutton);
+    };
+
+    return {
+        install: function (container, buttons, data) {
+            var view = new View(data);
+            view.install(container);
+            view.installButtons(buttons);
         }
     };
 })();
@@ -259,41 +377,39 @@ var TreeControl = (function () {
     }
 
     return {
-        install: function (containers, data) {
-            containers.empty().append(printValue(data));
+        install: function (container, data) {
+            container.empty().append(printValue(data));
         }
     };
 })();
 
 var ResultControl = {
-    install: function (containers, symbol, data) {
-        containers.each(function () {
-            var container = $(this);
-            var buttonspan = $('<span/>');
-            var valdiv = $('<div class="resultval"/>');
-            var button = '<a href="#" class="button"/>';
+    install: function (container, symbol, data) {
+        var buttonspan = $('<span/>');
+        var valdiv = $('<div class="resultval"/>');
 
-            function showTree() {
-                buttonspan.empty().append($(button).text('view as table'))
-                    .click(showTable);
-                TreeControl.install(valdiv, data);
-                return false;
-            }
+        function button(label, onclick) {
+            return $('<a href="#" class="button"/>').text(label).click(onclick);
+        }
 
-            function showTable() {
-                buttonspan.empty().append($(button).text('view as tree'))
-                    .click(showTree);
-                TableControl.install(valdiv, data);
-                return false;
-            }
+        function showTree() {
+            buttonspan.empty().append(button('view as table', showTable));
+            TreeControl.install(valdiv, data);
+            return false;
+        }
 
-            container.empty()
-                .append($('<var/>').addClass('resultvar').text(symbol))
-                .append(buttonspan)
-                .append(valdiv);
+        function showTable() {
+            buttonspan.empty().append(button('view as tree', showTree));
+            TableControl.install(valdiv, buttonspan, data);
+            return false;
+        }
 
-            showTree();
-        });
+        container.empty()
+            .append($('<var/>').addClass('resultvar').text(symbol))
+            .append(buttonspan)
+            .append(valdiv);
+
+        showTree();
     }
 };
 

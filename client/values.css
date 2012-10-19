@@ -6,7 +6,7 @@ form.prompt label:after { content: '> '; }
 .resultvar:after { content: ' = '; }
 
 /* Result view buttons */
-a.button { margin-left: 1em; margin-right: 1em; }
+a.button { margin-left: 1em; }
 
 .number, .string, .boolean, .null, .date {
     color: blue;
