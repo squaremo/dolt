@@ -28,20 +28,14 @@ function table(val) {
     }
 }
 
-// The environment exposed to evaluated expressions
+// The environment exposed to evaluated expressions.  We'll leave
+// 'table' as the entry point to the stream operators, e.g.,
+// project/select/equijoin.
 var env = {
     get: misc.get,
     post: misc.post,
-    table: table,
-    map: noodle.map,
-    filter: noodle.filter,
-    zipWith: noodle.zipWith,
+    table: table
 };
-
-// for (var k in noodle) {
-//     console.log('Adding ' + k + ' to env');
-//     env[k] = promisify(noodle[k]); // %% NIL?
-// }
 
 function Session() {
     this.id = uuid.v1();
@@ -73,7 +67,7 @@ Session.prototype.eval = function (expr) {
     // Running the expression will either generate a value, a promise,
     // or a stream. If it's a stream, and we want to refer to the
     // stream later, we have to store it as a stream rather than
-    // realising it. If it's a promise we want to wait for the value
+    // realising it. If it's a promise, we want to wait for the value
     // then store that.
 
     return when(null, function () {
