@@ -436,25 +436,32 @@ $(function() {
         return false;
     }
 
+    function renderExpression(expr) {
+        return $('<kbd/>').addClass('history').text(expr);
+    }
+
+    function fillOutputSection(output, result) {
+        output.empty();
+
+        if (result.hasOwnProperty('value')) {
+            var resdiv = $('<div/>').addClass('result');
+            output.append(resdiv);
+            ResultControl.install(resdiv, result.variable, result.value);
+        }
+        else {
+            output.append($('<span/>').text("Error: " + result.error));
+        }
+    }
+
     function evaluate() {
-        var expression = current.find('input').val();
-        current.replaceWith($('<kbd/>').addClass('history')
-                            .append('<code/>').text(expression));
+        var expr = current.find('input').val();
+        current.replaceWith(renderExpression(expr));
 
         var output = $('<section/>').append(spin.clone());
         repl.append(output);
 
-        sendToBeEvaluated(expression, function (result) {
-            output.empty();
-
-            if (result.hasOwnProperty('value')) {
-                var resdiv = $('<div/>').addClass('result');
-                output.append(resdiv);
-                ResultControl.install(resdiv, result.variable, result.value);
-            }
-            else {
-                output.append($('<span/>').text("Error: " + result.error));
-            }
+        sendToBeEvaluated(expr, function (result) {
+            fillOutputSection(output, result);
         });
 
         return prompt();
@@ -464,5 +471,16 @@ $(function() {
         $.post(eval_uri, exp, k, 'json');
     }
 
-    prompt();
+    $.get('/api/history', function(history) {
+        for (var i = 0; i < history.length; i++) {
+            repl.append(renderExpression(history[i].expr));
+            var output = $('<section/>').appendTo(repl);
+            if (history[i].in_progress)
+                output.text('Hang on, still thinking about this one...');
+            else
+                fillOutputSection(output, history[i]);
+        }
+
+        prompt();
+    }, 'json');
 });
