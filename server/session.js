@@ -39,11 +39,17 @@ var env = {
 
 function Session() {
     this.id = uuid.v1();
-    this.results = [];
+    this.history = [];
+}
+
+function merge(a, b) {
+    var res = {};
+    for (var p in a) { res[p] = a[p]; }
+    for (var p in b) { res[p] = b[p]; }
+    return res;
 }
 
 Session.prototype.eval = function (expr) {
-    var self = this;
     var params = [];
     var args = [];
 
@@ -55,14 +61,21 @@ Session.prototype.eval = function (expr) {
     for (var i in env) { bind(i, env[i]); }
 
     var dollar;
-    for (var i = 0; i < this.results.length; i++) {
-        dollar = this.results[i];
+    for (var i = 0; i < this.history.length; i++) {
+        dollar = this.history[i].value;
         bind("$" + (i + 1), dollar);
     }
 
     bind("$", dollar);
 
     params.push("return (" + expr + ")");
+
+    var history_entry = {
+        expr: expr,
+        variable: '$' + (this.history.length + 1),
+        in_progress: true
+    };
+    this.history.push(history_entry);
 
     // Running the expression will either generate a value, a promise,
     // or a stream. If it's a stream, and we want to refer to the
@@ -72,29 +85,29 @@ Session.prototype.eval = function (expr) {
 
     return when(null, function () {
         var res = Function.apply(null, params).apply(null, args);
-        var dollar = self.results.length;
-        self.results[dollar] = undefined;
         if (noodle.isStream(res)) {
-            self.results[dollar] = res;
+            history_entry.value = res;
             return res.collect();
         }
-        else if (when.isPromise(res)) {
-            res.then(function(realres) { self.results[dollar] = realres; });
-            return res;
-        }
         else {
-            self.results[dollar] = res;
-            return res;
+            return when(res, function(realres) {
+                history_entry.value = realres;
+                return realres;
+            });
         }
     }).then(function (res) {
-        // Trying to turn a Buffer into JSON is a bad idea
-        if (Buffer.isBuffer(res)) {
-            res = res.toString('base64');
-        }
+        history_entry.in_progress = false;
 
-        return { value: res, variable: '$' + self.results.length };
+        // Trying to turn a Buffer into JSON is a bad idea
+        if (Buffer.isBuffer(res))
+            res = res.toString('base64');
+
+        return merge(history_entry, {value: res});
     }, function (err) {
-        return { error: err.toString() };
+        delete history_entry.value;
+        history_entry.error = err.toString();
+        history_entry.in_progress = false;
+        return history_entry;
     });
 };
 
