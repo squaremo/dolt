@@ -28,25 +28,13 @@ function respond(res, p) {
     });
 }
 
-var sessions = {};
+var session = new Session();
 
-app.post('/api/session', function (req, res) {
-    var s = new Session();
-    sessions[s.id] = s;
+app.post('/api/eval', function (req, res) {
     res.type('application/json');
-    respond(res, {eval_uri: "/api/session/" + s.id + "/eval"});
-});
-
-app.post('/api/session/:id/eval', function (req, res) {
-    var s = sessions[req.params.id];
-    if (s) {
-        res.type('application/json');
-        respond(res, misc.readAll(req).then(function (body) {
-            return s.eval(body.toString('utf8'));
-        }));
-    } else {
-        res.send(404);
-    }
+    respond(res, misc.readAll(req).then(function (body) {
+        return session.eval(body.toString('utf8'));
+    }));
 });
 
 console.log("Serving files from " + path + " at " + host + ":" + port);

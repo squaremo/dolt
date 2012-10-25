@@ -416,7 +416,7 @@ var ResultControl = {
 $(function() {
     var repl = $('#repl');
     var current;
-    var eval_uri;
+    var eval_uri = "/api/eval";
 
     var spin = $('<img/>').attr('src', 'ajax-loader.gif');
     var form = $('<form/>').addClass('prompt')
@@ -427,11 +427,6 @@ $(function() {
         console.error(error);
         $('#errors').append($('<h3/>').addClass('fatal').text(error));
     }
-
-    $.post('/api/session', function(data) {
-        eval_uri = data.eval_uri;
-        prompt();
-    }, 'json');
 
     function prompt() {
         current = form.clone();
@@ -468,4 +463,6 @@ $(function() {
     function sendToBeEvaluated(exp, k) {
         $.post(eval_uri, exp, k, 'json');
     }
+
+    prompt();
 });
