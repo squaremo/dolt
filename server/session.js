@@ -111,4 +111,20 @@ Session.prototype.eval = function (expr) {
     });
 };
 
+Session.prototype.historyJson = function () {
+    return when.all(this.history.map(function (entry) {
+        if (entry.in_progress)
+            // Evaluation is still in progress, so punt
+            return merge(entry, {value: undefined});
+        else if (noodle.isStream(entry.value))
+            // Evaluation is done, but we still have to do this dance
+            // to get the value out of a stream
+            return entry.value.collect().then(function (val) {
+                return merge(entry, {value: val});
+            });
+        else
+            return entry;
+    }));
+};
+
 module.exports = Session;

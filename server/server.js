@@ -37,5 +37,10 @@ app.post('/api/eval', function (req, res) {
     }));
 });
 
+app.get('/api/history', function (req, res) {
+    res.type('application/json');
+    respond(res, session.historyJson());
+});
+
 console.log("Serving files from " + path + " at " + host + ":" + port);
 app.listen(port, host);
