@@ -440,13 +440,13 @@ $(function() {
         return $('<kbd/>').addClass('history').text(expr);
     }
 
-    function fillOutputSection(output, result) {
+    function fillOutputSection(output, response) {
         output.empty();
 
-        if (result.hasOwnProperty('value')) {
+        if (response.hasOwnProperty('result')) {
             var resdiv = $('<div/>').addClass('result');
             output.append(resdiv);
-            ResultControl.install(resdiv, result.variable, result.value);
+            ResultControl.install(resdiv, response.variable, response.result.value);
         }
         else {
             output.append($('<span/>').text("Error: " + result.error));
