@@ -6,7 +6,8 @@ var misc = require('./misc');
 var noodle = require('noodle');
 var promisify = require('promisify');
 var fs = promisify.object({
-    writeFile: promisify.cb_func()
+    writeFile: promisify.cb_func(),
+    readFile: promisify.cb_func()
 })(require('fs'));
 
 function Table(stream, columns) {
@@ -14,7 +15,7 @@ function Table(stream, columns) {
     this.columns = columns;
 }
 
-Table.prototype.serialize = function() {
+Table.prototype.serialize = function () {
     var cols = this.columns;
     var stream = this.stream;
     if (cols)
@@ -29,6 +30,10 @@ Table.prototype.serialize = function() {
             columns: cols
         };
     });
+};
+
+Table.deserialize = function (json) {
+    return new Table(noodle.array(json.rows), json.columns);
 };
 
 function inferColumns(data) {
@@ -87,7 +92,22 @@ var env = {
 
 function Session() {
     this.id = uuid.v1();
-    this.history = when([]);
+    this.history = fs.readFile("/tmp/history.json").then(function (data) {
+        return JSON.parse(data);
+    }, function (err) {
+        if (err.code === 'ENOENT')
+            return [];
+        else
+            throw err;
+    }).then(function (history) {
+        return history.map(function (entry) {
+            if (entry.result && entry.result.type === 'table'
+                && entry.result.value)
+                entry.result.value = Table.deserialize(entry.result.value);
+
+            return entry;
+        });
+    });
 }
 
 Session.prototype.saveHistory = function () {
