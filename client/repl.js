@@ -55,6 +55,8 @@ var TableControl = (function() {
     View.prototype.install = function (container, buttons) {
         var view = this;
         this.container = container.empty();
+        var buttons = $('<span/>').addClass('buttons').appendTo(container);
+        view.installButtons(buttons);
         this.tbody = $('<tbody/>');
 
         // The maximum width of the table, based on the viewport size
@@ -160,7 +162,7 @@ var TableControl = (function() {
         // We only need to add width properties on the first row
         if (!row && col.width) { td.css('width', col.width); }
         return td;
-    }
+    };
 
     View.prototype.populateTBody = function () {
         var tbody = this.tbody;
