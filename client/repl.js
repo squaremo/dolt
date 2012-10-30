@@ -52,7 +52,7 @@ var TableControl = (function() {
         this.rows = data.rows;
     }
 
-    View.prototype.install = function (container, buttons) {
+    View.prototype.install = function (container) {
         var view = this;
         this.container = container.empty();
         var buttons = $('<span/>').addClass('buttons').appendTo(container);
@@ -157,8 +157,8 @@ var TableControl = (function() {
 
     View.prototype.makeCell = function (col, row) {
         var val = this.rows[row][col.key];
-        var td = $('<td>').text(val === undefined ? "\xa0" // &nbsp;
-                                                  : JSON.stringify(val));
+        var td = $('<td>');
+        TreeControl.install(td, val);
         // We only need to add width properties on the first row
         if (!row && col.width) { td.css('width', col.width); }
         return td;
