@@ -52,13 +52,7 @@ function isTable(value) {
 // Tablize a value, returning a stream with the columns given.
 function table(something, columnsInOrder) {
     function streamize(val) {
-        switch (typeof val) {
-        case 'string':
-            newval = JSON.parse(val);
-            if (typeof newval !== 'string') return streamize(newval);
-            // Um.
-            return noodle.values(newval); // %% this may just be confusing.
-        case 'object':
+        if (typeof(val) === 'object') {
             if (when.isPromise(val)) {
                 return noodle.asPromised(when(val, streamize));
             }
@@ -68,12 +62,11 @@ function table(something, columnsInOrder) {
             else if (Array.isArray(val)) {
                 return noodle.array(val);
             }
-            else {
-                return noodle.values(val);
-            }
-        default:
-            return noodle.values(val); // again, confusing?
         }
+
+        // This doesn't really work, as columns will be inferred as
+        // empty.
+        return noodle.values(val);
     }
 
     return new Table(streamize(something), columnsInOrder);
