@@ -168,14 +168,18 @@ Session.prototype.historyJson = function () {
         if (entry.in_progress)
             // Evaluation is still in progress, so punt
             return merge(entry, {result: undefined});
-        else if (entry.result.type === 'table')
-            // Evaluation is done, but we still have to do this dance
-            // to get the value out of a stream
-            return entry.result.value.serialise().then(function (val) {
+        // Evaluation is done, but we still have to do this dance
+        // to get the value out of a stream or table
+        else if (noodle.isStream(entry.result))
+            return entry.result.collect().then(function (data) {
+                return merge(entry, {result: {type: 'ground', value: data}});
+            });
+        else if (isTable(entry.result))
+            return entry.result.serialise().then(function (val) {
                 return merge(entry, {result: {type: 'table', value: val}});
             });
         else
-            return entry;
+            return merge(entry, {result: {type: 'ground', value: entry.result}});;
     }));
 };
 
