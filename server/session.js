@@ -87,7 +87,7 @@ var env = {
 
 function Session() {
     this.id = uuid.v1();
-    this.history = [];
+    this.history = when([]);
 }
 
 Session.prototype.saveHistory = function () {
@@ -127,41 +127,40 @@ function history_entry_with_value(entry, val) {
 }
 
 Session.prototype.eval = function (expr) {
-    var params = [];
-    var args = [];
-
-    function bind(name, val) {
-        params.push(name);
-        args.push(val);
-    }
-
-    for (var i in env) { bind(i, env[i]); }
-
-    var dollar;
-    for (var i = 0; i < this.history.length; i++) {
-        dollar = this.history[i].result.value;
-        bind("$" + (i + 1), dollar);
-    }
-
-    bind("$", dollar);
-
-    params.push("return (" + expr + ")");
-
+    var self = this;
     var history_entry = {
         expr: expr,
-        variable: '$' + (this.history.length + 1),
         in_progress: true
     };
-    this.history.push(history_entry);
 
-    // Running the expression will either generate a value, a promise,
-    // or a stream. If it's a stream, and we want to refer to the
-    // stream later, we have to store it as a stream rather than
-    // realising it. If it's a promise, we want to wait for the value
-    // then store that.
+    return this.history.then(function (history) {
+        // Set up the environment for the evaluation
+        var params = [];
+        var args = [];
 
-    var self = this;
-    return when(null, function () {
+        function bind(name, val) {
+            params.push(name);
+            args.push(val);
+        }
+
+        for (var i in env) { bind(i, env[i]); }
+
+        var dollar;
+        for (var i = 0; i < history.length; i++) {
+            if (!history[i].error) {
+                dollar = history[i].result.value;
+                bind("$" + (i + 1), dollar);
+            }
+        }
+
+        bind("$", dollar);
+
+        params.push("return (" + expr + ")");
+
+        history_entry.variable = '$' + (history.length + 1);
+        history.push(history_entry);
+
+        // Evaluate
         var val = Function.apply(null, params).apply(null, args);
         history_entry.result = { value: val };
         if (isTable(val)) {
@@ -197,25 +196,30 @@ Session.prototype.eval = function (expr) {
 };
 
 Session.prototype.historyJson = function () {
-    return when.all(this.history.map(function (entry) {
-        if (entry.in_progress) {
-            // Evaluation is still in progress, so punt
-            return history_entry_with_value(entry, undefined);
-        }
-        else {
-            var val = entry.result.value;
-            if (isTable(val))
-                val = val.serialize();
+    return this.history.then(function (history) {
+        return when.all(history.map(function (entry) {
+            if (entry.error) {
+                return entry;
+            }
+            else if (entry.in_progress) {
+                // Evaluation is still in progress, so punt
+                return history_entry_with_value(entry, undefined);
+            }
+            else {
+                var val = entry.result.value;
+                if (isTable(val))
+                    val = val.serialize();
 
-            return when(val, function (val) {
-                // Trying to turn a Buffer into JSON is a bad idea
-                if (Buffer.isBuffer(val))
-                    val = val.toString('base64');
+                return when(val, function (val) {
+                    // Trying to turn a Buffer into JSON is a bad idea
+                    if (Buffer.isBuffer(val))
+                        val = val.toString('base64');
 
-                return history_entry_with_value(entry, val);
-            });
-        }
-    }));
+                    return history_entry_with_value(entry, val);
+                });
+            }
+        }));
+    });
 };
 
 module.exports = Session;
