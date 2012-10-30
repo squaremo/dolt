@@ -4,6 +4,10 @@ var when = require('when');
 var uuid = require('node-uuid');
 var misc = require('./misc');
 var noodle = require('noodle');
+var promisify = require('promisify');
+var fs = promisify.object({
+    writeFile: promisify.cb_func()
+})(require('fs'));
 
 function Table(stream, columns) {
     this.stream = stream;
@@ -86,11 +90,40 @@ function Session() {
     this.history = [];
 }
 
-function merge(a, b) {
-    var res = {};
-    for (var p in a) { res[p] = a[p]; }
-    for (var p in b) { res[p] = b[p]; }
-    return res;
+Session.prototype.saveHistory = function () {
+    if (this.saving_history) {
+        // We were already saving the history.  Mark that it needs
+        // saving again.
+        this.saving_history = "again";
+        return;
+    }
+
+    this.saving_history = true;
+
+    var self = this;
+    function writeHistory() {
+        self.historyJson().then(function (json) {
+            return fs.writeFile("/tmp/history.json", JSON.stringify(json));
+        }).then(function () {
+            if (self.saving_history === "again") {
+                self.saving_history = true;
+                writeHistory();
+            }
+            else {
+                self.saving_history = false;
+            }
+        });
+    }
+
+    writeHistory();
+}
+
+// Make a copy of a history entry, setting the result.value of the copy. */
+function history_entry_with_value(entry, val) {
+    var copy = {};
+    for (var p in entry) { copy[p] = entry[p]; }
+    copy.result = { type: entry.result.type, value: val };
+    return copy;
 }
 
 Session.prototype.eval = function (expr) {
@@ -106,7 +139,7 @@ Session.prototype.eval = function (expr) {
 
     var dollar;
     for (var i = 0; i < this.history.length; i++) {
-        dollar = this.history[i].result;
+        dollar = this.history[i].result.value;
         bind("$" + (i + 1), dollar);
     }
 
@@ -127,54 +160,61 @@ Session.prototype.eval = function (expr) {
     // realising it. If it's a promise, we want to wait for the value
     // then store that.
 
+    var self = this;
     return when(null, function () {
-        var res = Function.apply(null, params).apply(null, args);
-
-        if (isTable(res)) {
-            history_entry.result = res;
-            return when(res.serialize(), function(realres) {
-                return {type: 'table', value: realres};
-            });
+        var val = Function.apply(null, params).apply(null, args);
+        history_entry.result = { value: val };
+        if (isTable(val)) {
+            history_entry.result.type = 'table';
+            val = val.serialize();
         }
         else {
-            return when(res, function(realres) {
-                history_entry.result = realres;
-                return {type: 'ground', value: realres};
-            });
+            history_entry.result.type = 'ground';
         }
-    }).then(function (res) {
+
+        self.saveHistory();
+        return val;
+    }).then(function (val) {
         history_entry.in_progress = false;
+        if (history_entry.result.type === 'ground')
+            history_entry.result.value = val;
+
+        self.saveHistory();
 
         // Trying to turn a Buffer into JSON is a bad idea
-        if (Buffer.isBuffer(res.value))
-            res.value = res.value.toString('base64');
+        if (Buffer.isBuffer(val))
+            val = val.toString('base64');
 
-        return merge(history_entry, {result: res});
+        // Replace the Table/Promise with the jsonable value
+        return history_entry_with_value(history_entry, val);
     }, function (err) {
         delete history_entry.result;
         history_entry.error = err.toString();
         history_entry.in_progress = false;
+        self.saveHistory();
         return history_entry;
     });
 };
 
 Session.prototype.historyJson = function () {
     return when.all(this.history.map(function (entry) {
-        if (entry.in_progress)
+        if (entry.in_progress) {
             // Evaluation is still in progress, so punt
-            return merge(entry, {result: undefined});
-        // Evaluation is done, but we still have to do this dance
-        // to get the value out of a stream or table
-        else if (noodle.isStream(entry.result))
-            return entry.result.collect().then(function (data) {
-                return merge(entry, {result: {type: 'ground', value: data}});
+            return history_entry_with_value(entry, undefined);
+        }
+        else {
+            var val = entry.result.value;
+            if (isTable(val))
+                val = val.serialize();
+
+            return when(val, function (val) {
+                // Trying to turn a Buffer into JSON is a bad idea
+                if (Buffer.isBuffer(val))
+                    val = val.toString('base64');
+
+                return history_entry_with_value(entry, val);
             });
-        else if (isTable(entry.result))
-            return entry.result.serialize().then(function (val) {
-                return merge(entry, {result: {type: 'table', value: val}});
-            });
-        else
-            return merge(entry, {result: {type: 'ground', value: entry.result}});;
+        }
     }));
 };
 
