@@ -71,11 +71,18 @@ function table(something, columnsInOrder) {
             else if (Array.isArray(val)) {
                 return noodle.array(val);
             }
+            else {
+                // Turn other objects into a key/value table
+                var arr = [];
+                for (var p in val)
+                    arr.push({key: p, value: val[p]});
+                return noodle.array(arr);
+            }
         }
-
-        // This doesn't really work, as columns will be inferred as
-        // empty.
-        return noodle.values(val);
+        else {
+            // Make singleton values into a single-celled table
+            return noodle.array([{value: val}]);
+        }
     }
 
     return new Table(streamize(something), columnsInOrder);
