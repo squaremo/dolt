@@ -11,13 +11,35 @@ function Table(stream, columns) {
 }
 Table.prototype.serialise = function() {
     var cols = this.columns;
-    return when(this.stream.collect(), function(rows) {
+    var rows = (cols) ? this.stream.project(cols).collect() : this.stream.collect();
+    return when(rows, function(data) {
+        if (cols === undefined) {
+            cols = inferColumns(data);
+        }
         return {
-            rows: rows,
+            rows: data,
             columns: cols
         };
     });
 };
+
+function inferColumns(data) {
+    // Find the set of keys from the data elements
+    var keys = {};
+    for (var i = 0; i < data.length; i++) {
+        for (var k in data[i]) {
+            keys[k] = true;
+        }
+    }
+
+    // Turn that set into a sorted list
+    var cols = [];
+    for (var k in keys) {
+        cols.push(k);
+    }
+    cols.sort();
+    return cols;
+}
 
 function isTable(value) {
     return value instanceof Table;
@@ -38,6 +60,9 @@ function table(something, columnsInOrder) {
                 return noodle.asPromised(
                     when(val, function(s) { return streamise(s); }));
             }
+            else if (isTable(val)) {
+                return val.stream;
+            }
             else {
                 return (Array.isArray(val)) ?
                     noodle.array(val) :
@@ -48,7 +73,7 @@ function table(something, columnsInOrder) {
         }
     }
 
-    var s = streamise(something).project(columnsInOrder);
+    var s = streamise(something);
     return new Table(s, columnsInOrder);
 }
 
