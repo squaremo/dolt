@@ -1,28 +1,4 @@
 var TableControl = (function() {
-    function findColumns(data) {
-        // Find the set of keys from the data elements
-        var keys = {};
-        for (var i = 0; i < data.length; i++) {
-            for (var k in data[i]) {
-                keys[k] = true;
-            }
-        }
-
-        // Turn that set into a sorted list
-        var cols = [];
-        for (var k in keys) {
-            cols.push(k);
-        }
-
-        cols.sort();
-
-        // Construct the column objects
-        for (var i = 0; i < cols.length; i++) {
-            cols[i] = { key: cols[i] };
-        }
-
-        return cols;
-    }
 
     function sortByKey(rows, key, descending) {
         var i = 0;
@@ -72,8 +48,8 @@ var TableControl = (function() {
     };
 
     function View(data) {
-        this.cols = findColumns(data);
-        this.rows = data;
+        this.cols = data.columns.map(function(name) { return {key: name}; });
+        this.rows = data.rows;
     }
 
     View.prototype.install = function (container, buttons) {
@@ -305,10 +281,9 @@ var TableControl = (function() {
     };
 
     return {
-        install: function (container, buttons, data) {
+        install: function (container, data) {
             var view = new View(data);
             view.install(container);
-            view.installButtons(buttons);
         }
     };
 })();
@@ -384,32 +359,14 @@ var TreeControl = (function () {
 })();
 
 var ResultControl = {
-    install: function (container, symbol, data) {
-        var buttonspan = $('<span/>');
+    install: function (container, view, symbol, data) {
         var valdiv = $('<div class="resultval"/>');
-
-        function button(label, onclick) {
-            return $('<a href="#" class="button"/>').text(label).click(onclick);
-        }
-
-        function showTree() {
-            buttonspan.empty().append(button('view as table', showTable));
-            TreeControl.install(valdiv, data);
-            return false;
-        }
-
-        function showTable() {
-            buttonspan.empty().append(button('view as tree', showTree));
-            TableControl.install(valdiv, buttonspan, data);
-            return false;
-        }
 
         container.empty()
             .append($('<var/>').addClass('resultvar').text(symbol))
-            .append(buttonspan)
             .append(valdiv);
 
-        showTree();
+        view.install(valdiv, data);
     }
 };
 
@@ -417,6 +374,15 @@ $(function() {
     var repl = $('#repl');
     var current;
     var eval_uri = "/api/eval";
+
+    var CONTROLS = {
+        'table': TableControl,
+        'ground': TreeControl
+    };
+
+    function viewFor(result) {
+        return CONTROLS[result.type];
+    }
 
     var spin = $('<img/>').attr('src', 'ajax-loader.gif');
     var form = $('<form/>').addClass('prompt')
@@ -444,12 +410,14 @@ $(function() {
         output.empty();
 
         if (response.hasOwnProperty('result')) {
+            var result = response.result;
             var resdiv = $('<div/>').addClass('result');
             output.append(resdiv);
-            ResultControl.install(resdiv, response.variable, response.result.value);
+            var view = viewFor(result);
+            ResultControl.install(resdiv, view, response.variable, result.value);
         }
         else {
-            output.append($('<span/>').text("Error: " + result.error));
+            output.append($('<span/>').text("Error: " + response.error));
         }
     }
 
