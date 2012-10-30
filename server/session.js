@@ -9,10 +9,14 @@ function Table(stream, columns) {
     this.stream = stream;
     this.columns = columns;
 }
-Table.prototype.serialise = function() {
+
+Table.prototype.serialize = function() {
     var cols = this.columns;
-    var rows = (cols) ? this.stream.project(cols).collect() : this.stream.collect();
-    return when(rows, function(data) {
+    var stream = this.stream;
+    if (cols)
+        stream = stream.project(cols);
+
+    return when(stream.collect(), function(data) {
         if (cols === undefined) {
             cols = inferColumns(data);
         }
@@ -45,36 +49,34 @@ function isTable(value) {
     return value instanceof Table;
 }
 
-// Tablise a value, returning a stream with the columns given.
+// Tablize a value, returning a stream with the columns given.
 function table(something, columnsInOrder) {
-
-    function streamise(val) {
+    function streamize(val) {
         switch (typeof val) {
         case 'string':
             newval = JSON.parse(val);
-            if (typeof newval !== 'string') return streamise(newval);
+            if (typeof newval !== 'string') return streamize(newval);
             // Um.
             return noodle.values(newval); // %% this may just be confusing.
         case 'object':
             if (when.isPromise(val)) {
-                return noodle.asPromised(
-                    when(val, function(s) { return streamise(s); }));
+                return noodle.asPromised(when(val, streamize));
             }
             else if (isTable(val)) {
                 return val.stream;
             }
+            else if (Array.isArray(val)) {
+                return noodle.array(val);
+            }
             else {
-                return (Array.isArray(val)) ?
-                    noodle.array(val) :
-                    noodle.values(val);
+                return noodle.values(val);
             }
         default:
             return noodle.values(val); // again, confusing?
         }
     }
 
-    var s = streamise(something);
-    return new Table(s, columnsInOrder);
+    return new Table(streamize(something), columnsInOrder);
 }
 
 // The environment exposed to evaluated expressions.  We'll leave
@@ -137,7 +139,7 @@ Session.prototype.eval = function (expr) {
 
         if (isTable(res)) {
             history_entry.result = res;
-            return when(res.serialise(), function(realres) {
+            return when(res.serialize(), function(realres) {
                 return {type: 'table', value: realres};
             });
         }
@@ -175,7 +177,7 @@ Session.prototype.historyJson = function () {
                 return merge(entry, {result: {type: 'ground', value: data}});
             });
         else if (isTable(entry.result))
-            return entry.result.serialise().then(function (val) {
+            return entry.result.serialize().then(function (val) {
                 return merge(entry, {result: {type: 'table', value: val}});
             });
         else
