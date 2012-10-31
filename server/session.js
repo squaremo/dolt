@@ -3,90 +3,14 @@
 var when = require('when');
 var uuid = require('node-uuid');
 var misc = require('./misc');
-var noodle = require('noodle');
 var promisify = require('promisify');
 var fs = promisify.object({
     writeFile: promisify.cb_func(),
     readFile: promisify.cb_func()
 })(require('fs'));
+var table = require('./tables').table;
+var isTable = require('./tables').isTable;
 
-function Table(stream, columns) {
-    this.stream = stream;
-    this.columns = columns;
-}
-
-Table.prototype.serialize = function () {
-    var cols = this.columns;
-    var stream = this.stream;
-    if (cols)
-        stream = stream.project(cols);
-
-    return when(stream.collect(), function(data) {
-        if (cols === undefined) {
-            cols = inferColumns(data);
-        }
-        return {
-            rows: data,
-            columns: cols
-        };
-    });
-};
-
-Table.deserialize = function (json) {
-    return new Table(noodle.array(json.rows), json.columns);
-};
-
-function inferColumns(data) {
-    // Find the set of keys from the data elements
-    var keys = {};
-    for (var i = 0; i < data.length; i++) {
-        for (var k in data[i]) {
-            keys[k] = true;
-        }
-    }
-
-    // Turn that set into a sorted list
-    var cols = [];
-    for (var k in keys) {
-        cols.push(k);
-    }
-    cols.sort();
-    return cols;
-}
-
-function isTable(value) {
-    return value instanceof Table;
-}
-
-// Tablize a value, returning a stream with the columns given.
-function table(something, columnsInOrder) {
-    function streamize(val) {
-        if (typeof(val) === 'object') {
-            if (when.isPromise(val)) {
-                return noodle.asPromised(when(val, streamize));
-            }
-            else if (isTable(val)) {
-                return val.stream;
-            }
-            else if (Array.isArray(val)) {
-                return noodle.array(val);
-            }
-            else {
-                // Turn other objects into a key/value table
-                var arr = [];
-                for (var p in val)
-                    arr.push({key: p, value: val[p]});
-                return noodle.array(arr);
-            }
-        }
-        else {
-            // Make singleton values into a single-celled table
-            return noodle.array([{value: val}]);
-        }
-    }
-
-    return new Table(streamize(something), columnsInOrder);
-}
 
 // The environment exposed to evaluated expressions.  We'll leave
 // 'table' as the entry point to the stream operators, e.g.,
