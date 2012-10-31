@@ -56,6 +56,22 @@ function inferColumns(data) {
     return cols;
 }
 
+function columnUnion(colsA, colsB) {
+    if (Array.isArray(colsA) && Array.isArray(colsB)) {
+        var set = {};
+        var add = function(k) { set[k] = true; };
+        colsA.forEach(add); colsB.forEach(add);
+        var res = [];
+        for (var k in set) res.push(k);
+        return res;
+    }
+    // If we don't have the explicit columns supplied, we have to go
+    // back to guessing.
+    else {
+        return;
+    }
+}
+
 Table.prototype.serialize = function () {
     var cols = this.columns;
     var stream = this.stream;
@@ -73,6 +89,29 @@ Table.prototype.serialize = function () {
     });
 };
 
+Table.prototype.restrict = function(objOrFn) {
+    switch (typeof objOrFn) {
+    case 'function':
+        return new Table(this.stream.filter(objOrFn), this.columns);
+    case 'object':
+        var p = function(val) {
+            for (var k in objOrFn) {
+                // %% treatment of undefined/null
+                if (objOrFn[k] != val[k]) return false;
+            }
+            return true;
+        };
+        return this.restrict(p);
+    default:
+        return this.restrict({value: objOrFn});
+    }
+};
+
+Table.prototype.join = function(tableB, cols) {
+    return new Table(this.stream.equijoin(cols, tableB.stream), // NB arg order
+                     columnUnion(this.columns, tableB.columns));
+}
+
 Table.deserialize = function (json) {
     return new Table(noodle.array(json.rows), json.columns);
 };
@@ -81,5 +120,6 @@ function isTable(value) {
     return value instanceof Table;
 }
 
+module.exports = Table;
 module.exports.table = table;
 module.exports.isTable = isTable;

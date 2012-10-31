@@ -8,9 +8,8 @@ var fs = promisify.object({
     writeFile: promisify.cb_func(),
     readFile: promisify.cb_func()
 })(require('fs'));
-var table = require('./tables').table;
-var isTable = require('./tables').isTable;
-
+var Table = require('./tables');
+var isTable = Table.isTable;
 
 // The environment exposed to evaluated expressions.  We'll leave
 // 'table' as the entry point to the stream operators, e.g.,
@@ -18,7 +17,7 @@ var isTable = require('./tables').isTable;
 var env = {
     get: misc.get,
     post: misc.post,
-    table: table
+    table: Table.table
 };
 
 function Session() {
