@@ -72,6 +72,15 @@ function columnUnion(colsA, colsB) {
     }
 }
 
+function renameColumns(cols, map) {
+    if (cols) {
+        return cols.map(function(k) {
+            return (k in map) ? map[k] : k;
+        });
+    }
+    else return cols;
+}
+
 Table.prototype.serialize = function () {
     var cols = this.columns;
     var stream = this.stream;
@@ -111,6 +120,36 @@ Table.prototype.join = function(tableB, cols) {
     return new Table(this.stream.equijoin(cols, tableB.stream), // NB arg order
                      columnUnion(this.columns, tableB.columns));
 }
+
+Table.prototype.rename = function(map) {
+    var renamer, newCols;
+    if (typeof map === 'object') {
+        renamer = function(obj) {
+            var out = {};
+            for (var k in obj) {
+                if (k in map)
+                    out[map[k]] = obj[k];
+                else
+                    out[k] = obj[k];
+            }
+            return out;
+        };
+        newCols = renameColumns(this.columns, map);
+    }
+    else {
+        var prefix = map + '.';
+        renamer = function(obj) {
+            var out = {};
+            for (var k in obj) {
+                out[prefix + k] = obj[k];
+            }
+            return out;
+        }
+        newCols = this.columns && this.columns.map(
+            function(k) { return prefix + k; });
+    }
+    return new Table(this.stream.map(renamer), newCols);
+};
 
 Table.deserialize = function (json) {
     return new Table(noodle.array(json.rows), json.columns);
