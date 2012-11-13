@@ -143,7 +143,11 @@ var evaluate_type = {
 };
 
 Environment.prototype.evaluate = function (node, cont, econt) {
-    return evaluate_type[node.type](node, this, cont, econt);
+    var handler = evaluate_type[node.type];
+    if (handler)
+        return handler(node, this, cont, econt);
+    else
+        return econt(new Error(node.type + " not yet implemented"));
 };
 
 Environment.prototype.evaluateStatements = function (stmts, cont, econt) {
