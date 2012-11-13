@@ -33,13 +33,13 @@ var session = new Session();
 app.post('/api/eval', function (req, res) {
     res.type('application/json');
     respond(res, misc.readAll(req).then(function (body) {
-        return session.eval(body.toString('utf8'));
+        return Session.stringify(session.eval(body.toString('utf8')));
     }));
 });
 
 app.get('/api/history', function (req, res) {
     res.type('application/json');
-    respond(res, session.historyJson());
+    respond(res, Session.stringify(session.history));
 });
 
 console.log("Serving files from " + path + " at " + host + ":" + port);

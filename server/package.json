@@ -11,9 +11,12 @@
         "promisify": ""
     },
     "devDependencies": {
-        "nodeunit": ""
+        "nodeunit": "",
+        "pegjs": ""
     },
     "scripts" : {
-        "test" : "node ./node_modules/nodeunit/bin/nodeunit test"
+        "test" : "node ./node_modules/nodeunit/bin/nodeunit test",
+        "prestart" : "node ./node_modules/pegjs/bin/pegjs node_modules/pegjs/examples/javascript.pegjs",
+        "install" : "node ./node_modules/pegjs/bin/pegjs node_modules/pegjs/examples/javascript.pegjs"
     }
 }
