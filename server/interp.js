@@ -139,7 +139,13 @@ var evaluate_type = {
         return env.evaluate(node.right, function (val) {
             return env.assign(node.left.name, val, cont, econt);
         }, econt);
-    }
+    },
+
+    PropertyAccess: function (node, env, cont, econt) {
+        return env.evaluate(node.base, function (val) {
+            return tramp(cont, val[node.name]);
+        });
+    },
 };
 
 Environment.prototype.evaluate = function (node, cont, econt) {
@@ -177,6 +183,7 @@ function oline(t) {
 Environment.prototype.run = function (p, cont, econt) {
     try {
         p = parser.parse(p);
+        //console.log(JSON.stringify(p, null, "  "));
     }
     catch (e) {
         econt(e);
@@ -236,12 +243,9 @@ function run(p) {
                  function (err) { console.log("=! " + err); });
 }
 
-//var code = fs.readFileSync('foo.js', 'utf-8')
 //run("try { (function (n) { var x = n+1; print(x); throw 'bang'; 42; })(69); } catch (e) { print('oops: ' + e); 69; }");
 //var code = "var x; callcc(function (c) { x = c; }); print('Hello'); x();"
 //var code = "print(a+42)";
-
-//console.log(JSON.stringify(tree, null, "  "));
 
 module.exports.builtins = builtins;
 module.exports.Environment = Environment;
