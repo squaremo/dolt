@@ -146,6 +146,40 @@ var evaluate_type = {
             return tramp(cont, val[node.name]);
         });
     },
+
+    ObjectLiteral: function (node, env, cont, econt) {
+        var props = node.properties;
+        var res = {};
+
+        function do_props(i) {
+            if (i == props.length)
+                return tramp(cont, res);
+
+            return env.evaluate(props[i].value, function (val) {
+                res[props[i].name] = val;
+                return do_props(i + 1);
+            }, econt);
+        }
+
+        return do_props(0);
+    },
+
+    ArrayLiteral: function (node, env, cont, econt) {
+        var elems = node.elements;
+        var res = [];
+
+        function do_elems(i) {
+            if (i == elems.length)
+                return tramp(cont, res);
+
+            return env.evaluate(elems[i], function (val) {
+                res.push(val);
+                return do_elems(i + 1);
+            }, econt);
+        }
+
+        return do_elems(0);
+    },
 };
 
 Environment.prototype.evaluate = function (node, cont, econt) {
