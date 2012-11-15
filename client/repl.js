@@ -375,7 +375,7 @@ var ResultControl = {
 $(function() {
     var repl = $('#repl');
     var current;
-    var eval_uri = "/api/eval";
+    var eval_uri = "/eval";
 
     var CONTROLS = {
         'table': TableControl,
@@ -437,11 +437,25 @@ $(function() {
         return prompt();
     }
 
-    function sendToBeEvaluated(exp, k) {
-        $.post(eval_uri, exp, k, 'json');
+    KS = [];
+    function fireK(m) {
+        var k = KS.pop();
+        k(JSON.parse(m.data));
     }
 
-    $.get('/api/history', function(history) {
+    CONN = new SockJS(eval_uri);
+    CONN.onmessage = function(m) {
+        loadHistory(JSON.parse(m.data));
+        CONN.onmessage = fireK;
+        return prompt();
+    };
+
+    function sendToBeEvaluated(exp, k) {
+        KS.push(k);
+        CONN.send(exp);
+    }
+
+    function loadHistory(history) {
         for (var i = 0; i < history.length; i++) {
             repl.append(renderExpression(history[i].expr));
             var output = $('<section/>').appendTo(repl);
@@ -450,7 +464,5 @@ $(function() {
             else
                 fillOutputSection(output, history[i]);
         }
-
-        prompt();
-    }, 'json');
+    }
 });

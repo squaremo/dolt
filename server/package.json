@@ -8,7 +8,8 @@
         "when": "",
         "node-uuid": "",
         "noodle": "git+https://github.com/squaremo/noodle.git",
-        "promisify": ""
+        "promisify": "",
+        "sockjs": ""
     },
     "devDependencies": {
         "nodeunit": "",
@@ -16,7 +17,7 @@
     },
     "scripts" : {
         "test" : "node ./node_modules/nodeunit/bin/nodeunit test",
-        "prestart" : "node ./node_modules/pegjs/bin/pegjs node_modules/pegjs/examples/javascript.pegjs ./javascript.js",
-        "install" : "node ./node_modules/pegjs/bin/pegjs node_modules/pegjs/examples/javascript.pegjs ./javascript.js"
+        "prestart" : "node ./node_modules/pegjs/bin/pegjs ./javascript.pegjs ./javascript.js",
+        "install" : "node ./node_modules/pegjs/bin/pegjs ./javascript.pegjs ./javascript.js"
     }
 }

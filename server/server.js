@@ -4,12 +4,17 @@ var express = require('express');
 var when = require('when');
 var Session = require('./session');
 var misc = require('./misc');
+var SockJS = require('sockjs');
 
 var path = process.env.PWD + "/../client";
 var host = process.env.VCAP_APP_HOST || '0.0.0.0';
 var port = process.env.VCAP_APP_PORT || 8000;
 
 var app = express();
+var server = require('http').createServer(app);
+var sockjs = SockJS.createServer();
+sockjs.installHandlers(server, {prefix: '/eval'});
+
 app.configure(function(){
     app.use(express.logger());
     app.use(app.router);
@@ -18,29 +23,27 @@ app.configure(function(){
 });
 
 // Utility to hook a promise up to an Express response
-function respond(res, p) {
+function respond(connection, p) {
     when(p, function(out) {
-        res.send(200, out);
+        connection.write(out);
     }, function (err) {
         if (err.stack) { console.log(err.stack); }
-        res.type("text/plain");
-        res.send(500, err.toString()+"\r\n");
+        connection.close(500, err.toString()+"\r\n");
     });
 }
 
 var session = new Session();
 
-app.post('/api/eval', function (req, res) {
-    res.type('application/json');
-    respond(res, misc.readAll(req).then(function (body) {
-        return Session.stringify(session.eval(body.toString('utf8')));
-    }));
+sockjs.on('connection', function(connection) {
+    connection.on('data', handler(session, connection));
+    respond(connection, Session.stringify(session.history));
 });
 
-app.get('/api/history', function (req, res) {
-    res.type('application/json');
-    respond(res, Session.stringify(session.history));
-});
+function handler(session, connection) {
+    return function(data) {
+        respond(connection, Session.stringify(session.eval(data)));
+    };
+}
 
 console.log("Serving files from " + path + " at " + host + ":" + port);
-app.listen(port, host);
+server.listen(port, host);
