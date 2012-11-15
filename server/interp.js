@@ -9,40 +9,73 @@ function Environment(parent) {
     this.parent = parent;
 }
 
-Environment.prototype.lookup = function (symbol, cont, econt) {
-    var env = this;
-    while (env) {
-        if (symbol in env.frame)
-            return tramp(cont, env.frame[symbol]);
-
-        env = env.parent;
-    }
-
-    return tramp(econt, new Error("unbound variable '" + symbol + "'"));
-};
-
 Environment.prototype.bind = function (symbol, val) {
     this.frame[symbol] = val;
 };
 
-Environment.prototype.assign = function (symbol, val, cont, econt) {
+Environment.prototype.variable = function (symbol, cont, econt) {
     var env = this;
-    while (env) {
-        if (symbol in env.frame) {
-            env.frame[symbol] = val;
-            return tramp(cont, val);
-        }
-
+    while (!(symbol in env.frame)) {
         env = env.parent;
+        if (!env)
+            return tramp(econt, new Error("unbound variable '" + symbol + "'"));
     }
 
-    return tramp(econt, new Error("unbound variable '" + symbol + "'"));
+    return tramp(cont, {
+        get: function (cont, econt) {
+            return tramp(cont, env.frame[symbol]);
+        },
+        set: function (val, cont, econt) {
+            env.frame[symbol] = val;
+            return tramp(cont, undefined);
+        }
+    });
+};
+
+// An lvalue is represented as an object of the form:
+//
+// {
+//   get: function (cont, econt) { ... }, // yields value in the lvalue
+//   set: function (val, cont, econt) { ... }, // yields nothing
+// }
+
+var evaluate_lvalue_type = {
+    Variable: function (node, env, cont, econt) {
+        return env.variable(node.name, cont, econt);
+    },
+
+    PropertyAccess: function (node, env, cont, econt) {
+        return env.evaluate(node.base, function (base) {
+            return tramp(cont, {
+                get: function (cont, econt) {
+                    return tramp(cont, base[node.name]);
+                },
+                set: function (val, cont, econt) {
+                    base[node.name] = val;
+                    return tramp(cont, undefined);
+                }
+            });
+        });
+    },
+};
+
+Environment.prototype.evaluate_lvalue = function (node, cont, econt) {
+    var handler = evaluate_lvalue_type[node.type];
+    if (handler)
+        return handler(node, this, cont, econt);
+    else
+        return econt(new Error(node.type + " not an lvalue"));
 };
 
 var binary_ops = {
     '+': function (a, b) { return a + b; }
 };
 
+// binary_ops indexed by the corresponding assignment operator
+var assignment_ops = {};
+for (var op in binary_ops) {
+    assignment_ops[op+'='] = binary_ops[op];
+}
 
 function literal(node, env, cont, econt) {
     return tramp(cont, node.value);
@@ -56,16 +89,16 @@ var evaluate_type = {
         return env.evaluateStatements(node.elements, cont, econt);
     },
 
+    Block: function (node, env, cont, econt) {
+        return env.evaluateStatements(node.statements, cont, econt);
+    },
+
     BinaryExpression: function (node, env, cont, econt) {
         return env.evaluate(node.left, function (a) {
             return env.evaluate(node.right, function (b) {
                 return tramp(cont, binary_ops[node.operator](a, b));
             }, econt);
         }, econt);
-    },
-
-    Variable: function (node, env, cont, econt) {
-        return env.lookup(node.name, cont, econt);
     },
 
     VariableStatement: function (node, env, cont, econt) {
@@ -136,15 +169,23 @@ var evaluate_type = {
     },
 
     AssignmentExpression: function (node, env, cont, econt) {
-        return env.evaluate(node.right, function (val) {
-            return env.assign(node.left.name, val, cont, econt);
+        return env.evaluate_lvalue(node.left, function (lval) {
+            return env.evaluate(node.right, function (b) {
+                if (node.operator === '=') {
+                    return lval.set(b, function () {
+                        return tramp(cont, b);
+                    }, econt);
+                }
+                else {
+                    return lval.get(function (a) {
+                        var res = assignment_ops[node.operator](a, b);
+                        return lval.set(res, function () {
+                            return tramp(cont, res);
+                        }, econt);
+                    }, econt);
+                }
+            }, econt);
         }, econt);
-    },
-
-    PropertyAccess: function (node, env, cont, econt) {
-        return env.evaluate(node.base, function (val) {
-            return tramp(cont, val[node.name]);
-        });
     },
 
     ObjectLiteral: function (node, env, cont, econt) {
@@ -181,6 +222,19 @@ var evaluate_type = {
         return do_elems(0);
     },
 };
+
+function lvalue_handler_to_rvalue_handler(lvalue_handler) {
+    return function (node, env, cont, econt) {
+        return lvalue_handler(node, env, function (lval) {
+            return lval.get(cont, econt);
+        }, econt);
+    };
+}
+
+// Convert all lvalue handlers to rvalue handlers
+for (var t in evaluate_lvalue_type) {
+    evaluate_type[t] = lvalue_handler_to_rvalue_handler(evaluate_lvalue_type[t]);
+}
 
 Environment.prototype.evaluate = function (node, cont, econt) {
     var handler = evaluate_type[node.type];
