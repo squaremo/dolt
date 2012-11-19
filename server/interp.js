@@ -85,6 +85,10 @@ var evaluate_type = {
     NumericLiteral: literal,
     StringLiteral: literal,
 
+    EmptyStatement: function (node, env, cont, econt) {
+        return tramp(cont, undefined);
+    },
+
     Program: function (node, env, cont, econt) {
         return env.evaluateStatements(node.elements, cont, econt);
     },
