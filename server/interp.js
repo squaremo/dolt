@@ -312,8 +312,7 @@ function lift_promised_function(f) {
 }
 
 var builtins = new Environment();
-builtins.bind('a', 100);
-builtins.bind('print', lift_function(function (x) { console.log(x); }));
+//builtins.bind('print', lift_function(function (x) { console.log(x); }));
 
 builtins.bind('callcc', function (args, cont, econt) {
     // Call the provided continuation recipeint with a single argument...
