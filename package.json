@@ -1,0 +1,20 @@
+{
+    "name": "dolt-repl-server",
+    "version": "0.0.1",
+    "dependencies": {
+        "express": "",
+        "connect": "",
+        "when": "",
+        "node-uuid": "",
+        "noodle": "git+https://github.com/squaremo/noodle.git",
+        "promisify": ""
+    },
+    "devDependencies": {
+        "nodeunit": "",
+        "pegjs": ""
+    },
+    "scripts" : {
+        "test" : "make test",
+        "start": "make start-server"
+    }
+}
