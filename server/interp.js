@@ -59,7 +59,7 @@ var evaluate_lvalue_type = {
     },
 };
 
-Environment.prototype.evaluate_lvalue = function (node, cont, econt) {
+Environment.prototype.evaluateLValue = function (node, cont, econt) {
     var handler = evaluate_lvalue_type[node.type];
     if (handler)
         return handler(node, this, cont, econt);
@@ -174,7 +174,7 @@ var evaluate_type = {
     },
 
     AssignmentExpression: function (node, env, cont, econt) {
-        return env.evaluate_lvalue(node.left, function (lval) {
+        return env.evaluateLValue(node.left, function (lval) {
             return env.evaluate(node.right, function (b) {
                 if (node.operator === '=') {
                     return lval.set(b, function () {
