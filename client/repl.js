@@ -405,7 +405,17 @@ $(function() {
     }
 
     function renderExpression(expr) {
-        return $('<kbd/>').addClass('history').text(expr);
+        return $('<kbd/>').addClass('history')
+            .append(hilite(expr));
+    }
+
+    function hilite(expr) {
+        var tokens = tokenizer.parse(expr);
+        return tokens.map(function(token) {
+            return $('<span/>')
+                .addClass(token.type)
+                .text(token.chars);
+        });
     }
 
     function fillOutputSection(output, response) {

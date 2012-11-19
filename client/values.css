@@ -44,3 +44,7 @@ ol.array .composite, ul.object .composite { display: inline-block; }
 /* Table view */
 th.ascending:after { content: ' \25be'; }
 th.descending:after { content: ' \25b4'; }
+
+.history .literal { color: green; }
+.history .keyword { color: blue; }
+.history .identifier { font-weight: bold; }
