@@ -146,13 +146,18 @@ var evaluate_type = {
     },
 
     Function: function (node, env, cont, econt) {
-        return tramp(cont, function (args, cont, econt) {
+        var fun = function (args, cont, econt) {
             var subenv = new Environment(env);
             for (var i = 0; i < node.params.length; i++)
                 subenv.bind(node.params[i], args[i]);
 
             return subenv.evaluateStatements(node.elements, cont, econt);
-        });
+        };
+
+        if (node.name)
+            env.bind(node.name, fun);
+
+        return tramp(cont, fun);
     },
 
     TryStatement: function (node, env, cont, econt) {
