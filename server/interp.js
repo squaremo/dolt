@@ -4,8 +4,8 @@ var parser = require('./javascript');
 var fs = require('fs');
 
 
-function Environment(parent) {
-    this.frame = {};
+function Environment(parent, frame) {
+    this.frame = (frame || {});
     this.parent = parent;
 }
 
@@ -404,6 +404,36 @@ builtins.bind('lazy', function (args, env, cont, econt) {
     return tramp(cont, new Lazy(args[0], env));
 });
 
+builtins.bind('map', function (args, env, cont, econt) {
+    return env.evaluate(args[0], function (arr) {
+        var res = [];
+
+        function do_elems(i) {
+            if (i == arr.length)
+                return tramp(cont, res);
+
+            var elem = arr[i];
+            var subenv = env;
+
+            // If the element is an object, turn it into a frame in
+            // the environment
+            if (typeof(elem) === 'object')
+                subenv = new Environment(subenv, elem);
+
+            // And bind the element as '_'
+            subenv = new Environment(subenv);
+            subenv.bind('_', elem);
+
+            return subenv.evaluate(args[1], function (mapped) {
+                res.push(mapped);
+                return do_elems(i + 1);
+            }, econt);
+        }
+
+        return do_elems(0);
+    }, econt);
+});
+
 function run(p) {
     builtins.run(p,
                  function (val) { console.log("=> " + val); },
@@ -417,6 +447,7 @@ function run(p) {
 //var code = "var x; callcc(function (c) { x = c; }); print('Hello'); x();"
 //var code = "print(a+42)";
 //run("function intsFrom(n) { lazy({head: n, tail: intsFrom(n+1)}); } intsFrom(0).tail.tail.tail.head;");
+//run("map([1,2,3], _*1)");
 
 module.exports.builtins = builtins;
 module.exports.Environment = Environment;
