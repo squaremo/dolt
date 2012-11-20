@@ -16,8 +16,8 @@ var interp = require('./interp');
 // 'table' as the entry point to the stream operators, e.g.,
 // project/select/equijoin.
 var builtins = {
-    get: interp.lift_promised_function(misc.get),
-    post: interp.lift_promised_function(misc.post)
+    get: interp.promised_builtin(misc.get),
+    post: interp.promised_builtin(misc.post)
     //table: Table.table
 };
 
