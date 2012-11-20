@@ -136,6 +136,7 @@ function force(val, cont, econt) {
 var binary_ops = {
     '+': function (a, b) { return a + b; },
     '*': function (a, b) { return a * b; },
+    '>': function (a, b) { return a > b; },
 };
 
 // binary_ops indexed by the corresponding assignment operator
@@ -426,6 +427,38 @@ builtins.bind('map', function (args, env, cont, econt) {
 
             return subenv.evaluate(args[1], function (mapped) {
                 res.push(mapped);
+                return do_elems(i + 1);
+            }, econt);
+        }
+
+        return do_elems(0);
+    }, econt);
+});
+
+builtins.bind('filter', function (args, env, cont, econt) {
+    return env.evaluate(args[0], function (arr) {
+        var res = [];
+
+        function do_elems(i) {
+            if (i == arr.length)
+                return tramp(cont, res);
+
+            var elem = arr[i];
+            var subenv = env;
+
+            // If the element is an object, turn it into a frame in
+            // the environment
+            if (typeof(elem) === 'object')
+                subenv = new Environment(subenv, elem);
+
+            // And bind the element as '_'
+            subenv = new Environment(subenv);
+            subenv.bind('_', elem);
+
+            return subenv.evaluate(args[1], function (pred) {
+                if (pred)
+                    res.push(elem);
+
                 return do_elems(i + 1);
             }, econt);
         }
