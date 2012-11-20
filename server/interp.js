@@ -45,7 +45,7 @@ var evaluate_lvalue_type = {
     },
 
     PropertyAccess: function (node, env, cont, econt) {
-        return env.evaluate(node.base, function (base) {
+        return env.evaluateForced(node.base, function (base) {
             return tramp(cont, {
                 get: function (cont, econt) {
                     return tramp(cont, base[node.name]);
@@ -100,8 +100,42 @@ function invoke(fun, args, cont, econt) {
     }), new Environment(null), cont, econt);
 }
 
+function Lazy(node, env) {
+    this.node = node;
+    this.env = env;
+}
+
+Lazy.prototype.force = function (cont, econt) {
+    if ('value' in this) {
+        return tramp(cont, this.value);
+    }
+    else if ('error' in this) {
+        return tramp(cont, this.error);
+    }
+    else {
+        var lazy = this;
+        return this.env.evaluateForced(this.node, function (v) {
+            lazy.env = lazy.node = null;
+            lazy.value = v;
+            return tramp(cont, v);
+        }, function (e) {
+            lazy.env = lazy.node = null;
+            lazy.error = e;
+            return tramp(econt, e);
+        });
+    }
+};
+
+function force(val, cont, econt) {
+    if (val instanceof Lazy)
+        return val.force(cont, econt);
+    else
+        return tramp(cont, val);
+}
+
 var binary_ops = {
-    '+': function (a, b) { return a + b; }
+    '+': function (a, b) { return a + b; },
+    '*': function (a, b) { return a * b; },
 };
 
 // binary_ops indexed by the corresponding assignment operator
@@ -132,9 +166,14 @@ var evaluate_type = {
     },
 
     BinaryExpression: function (node, env, cont, econt) {
-        return env.evaluate(node.left, function (a) {
-            return env.evaluate(node.right, function (b) {
-                return tramp(cont, binary_ops[node.operator](a, b));
+        return env.evaluateForced(node.left, function (a) {
+            return env.evaluateForced(node.right, function (b) {
+                try {
+                    return tramp(cont, binary_ops[node.operator](a, b));
+                }
+                catch (e) {
+                    return tramp(econt, e);
+                }
             }, econt);
         }, econt);
     },
@@ -165,7 +204,7 @@ var evaluate_type = {
     },
 
     FunctionCall: function (node, env, cont, econt) {
-        return env.evaluate(node.name, function (f) {
+        return env.evaluateForced(node.name, function (f) {
             return f.call(null, node.arguments, env, cont, econt);
         }, econt);
     },
@@ -195,7 +234,7 @@ var evaluate_type = {
     },
 
     ThrowStatement: function (node, env, cont, econt) {
-        return env.evaluate(node.exception, econt, econt);
+        return env.evaluateForced(node.exception, econt, econt);
     },
 
     AssignmentExpression: function (node, env, cont, econt) {
@@ -274,6 +313,12 @@ Environment.prototype.evaluate = function (node, cont, econt) {
         return econt(new Error(node.type + " not yet implemented"));
 };
 
+Environment.prototype.evaluateForced = function (node, cont, econt) {
+    return this.evaluate(node, function (val) {
+        return force(val, cont, econt);
+    }, econt);
+};
+
 Environment.prototype.evaluateStatements = function (stmts, cont, econt) {
     var env = this;
 
@@ -342,7 +387,6 @@ function lift_promised_function(f) {
 }
 
 var builtins = new Environment();
-//builtins.bind('print', lift_function(function (x) { console.log(x); }));
 
 builtins.bind('callcc', strict(function (args, cont, econt) {
     // Wrap the original continuation in a callable function
@@ -356,6 +400,9 @@ builtins.bind('callcc', strict(function (args, cont, econt) {
     return invoke(args[0], [wrapped_cont], cont, econt);
 }));
 
+builtins.bind('lazy', function (args, env, cont, econt) {
+    return tramp(cont, new Lazy(args[0], env));
+});
 
 function run(p) {
     builtins.run(p,
@@ -363,9 +410,13 @@ function run(p) {
                  function (err) { console.log("=! " + err); });
 }
 
+//builtins.bind('print', lift_function(function (x) { console.log(x); }));
 //run("try { (function (n) { var x = n+1; print(x); throw 'bang'; 42; })(69); } catch (e) { print('oops: ' + e); 69; }");
 //run("var x; callcc(function (c) { x = c; }); print('Hello'); x();");
 //run("print(1+42)");
+//var code = "var x; callcc(function (c) { x = c; }); print('Hello'); x();"
+//var code = "print(a+42)";
+//run("function intsFrom(n) { lazy({head: n, tail: intsFrom(n+1)}); } intsFrom(0).tail.tail.tail.head;");
 
 module.exports.builtins = builtins;
 module.exports.Environment = Environment;
