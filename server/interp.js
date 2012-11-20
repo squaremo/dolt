@@ -67,6 +67,39 @@ Environment.prototype.evaluateLValue = function (node, cont, econt) {
         return econt(new Error(node.type + " not an lvalue"));
 };
 
+Environment.prototype.evaluateArgs = function (nodes, cont, econt) {
+    var env = this;
+    var evaled = [];
+
+    function do_args(i) {
+        if (i == nodes.length)
+            return tramp(cont, evaled);
+
+        return env.evaluate(nodes[i], function (a) {
+            evaled.push(a);
+            return do_args(i + 1);
+        }, econt);
+    }
+
+    return do_args(0);
+}
+
+// Decorate a strict function, taking args, cont, econt
+function strict(fun) {
+    return function (args, env, cont, econt) {
+        return env.evaluateArgs(args, function (evaled_args) {
+            return fun(evaled_args, cont, econt);
+        }, econt);
+    };
+}
+
+// Invoke a function with argument values
+function invoke(fun, args, cont, econt) {
+    return fun.call(null, args.map(function (arg) {
+        return { type: 'Literal', value: arg };
+    }), new Environment(null), cont, econt);
+}
+
 var binary_ops = {
     '+': function (a, b) { return a + b; }
 };
@@ -82,6 +115,7 @@ function literal(node, env, cont, econt) {
 }
 
 var evaluate_type = {
+    Literal: literal,
     NumericLiteral: literal,
     StringLiteral: literal,
 
@@ -132,31 +166,18 @@ var evaluate_type = {
 
     FunctionCall: function (node, env, cont, econt) {
         return env.evaluate(node.name, function (f) {
-            var args = node.arguments;
-            var evaled_args = [];
-
-            function do_args(i) {
-                if (i == args.length)
-                    return f.call(null, evaled_args, cont, econt);
-
-                return env.evaluate(args[i], function (a) {
-                    evaled_args.push(a);
-                    return do_args(i + 1);
-                }, econt);
-            }
-
-            return do_args(0);
+            return f.call(null, node.arguments, env, cont, econt);
         }, econt);
     },
 
     Function: function (node, env, cont, econt) {
-        var fun = function (args, cont, econt) {
+        var fun = strict(function (args, cont2, econt2) {
             var subenv = new Environment(env);
             for (var i = 0; i < node.params.length; i++)
                 subenv.bind(node.params[i], args[i]);
 
-            return subenv.evaluateStatements(node.elements, cont, econt);
-        };
+            return subenv.evaluateStatements(node.elements, cont2, econt2);
+        });
 
         if (node.name)
             env.bind(node.name, fun);
@@ -295,18 +316,18 @@ Environment.prototype.run = function (p, cont, econt) {
 };
 
 function lift_function(f) {
-    return function (args, cont, econt) {
+    return strict(function (args, cont, econt) {
         try {
             return tramp(cont, f.apply(null, args));
         }
         catch (e) {
             return tramp(econt, e);
         }
-    };
+    });
 }
 
 function lift_promised_function(f) {
-    return function (args, cont, econt) {
+    return strict(function (args, cont, econt) {
         try {
             f.apply(null, args).then(function (val) {
                 oline(cont(val));
@@ -317,20 +338,23 @@ function lift_promised_function(f) {
         catch (e) {
             return tramp(econt, e);
         }
-    };
+    });
 }
 
 var builtins = new Environment();
 //builtins.bind('print', lift_function(function (x) { console.log(x); }));
 
-builtins.bind('callcc', function (args, cont, econt) {
-    // Call the provided continuation recipeint with a single argument...
-    return args[0].call(null, [function (args2, cont2, econt2) {
+builtins.bind('callcc', strict(function (args, cont, econt) {
+    // Wrap the original continuation in a callable function
+    var wrapped_cont = strict(function (args2, cont2, econt2) {
         // ... that takes a single argument and calls the original
         // continuation with it.
         return tramp(cont, args2[0]);
-    }], cont, econt);
-});
+    });
+
+    // Call the provided continuation recipient with a single argument...
+    return invoke(args[0], [wrapped_cont], cont, econt);
+}));
 
 
 function run(p) {
@@ -340,8 +364,8 @@ function run(p) {
 }
 
 //run("try { (function (n) { var x = n+1; print(x); throw 'bang'; 42; })(69); } catch (e) { print('oops: ' + e); 69; }");
-//var code = "var x; callcc(function (c) { x = c; }); print('Hello'); x();"
-//var code = "print(a+42)";
+//run("var x; callcc(function (c) { x = c; }); print('Hello'); x();");
+//run("print(1+42)");
 
 module.exports.builtins = builtins;
 module.exports.Environment = Environment;
