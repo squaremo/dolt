@@ -54,16 +54,25 @@ IValue.prototype.property = function (key, cont, econt) {
     return tramp(econt, new Error(this.typename + ' is not an object'));
 };
 
-function itype(name, constr) {
+IValue.prototype.invokeMethod = function (name, args, env, cont, econt) {
+    // If there is a method, call it
+    var m = this.methods[name];
+    if (m)
+        return m.call(this, args, env, cont, econt);
+    else
+        tramp(econt, new Error('no method "' + name + '"'));
+};
+
+function itype(name, parent, constr) {
     constr = constr || function () {};
-    util.inherits(constr, IValue);
+    util.inherits(constr, parent);
     constr.prototype.typename = name;
     constr.prototype.methods = {};
     return constr;
 }
 
 function singleton_itype(name, props) {
-    var constr = itype(name);
+    var constr = itype(name, IValue);
     var singleton = new constr();
     for (var p in props)
         singleton[p] = props[p];
@@ -81,7 +90,7 @@ var iundefined = singleton_itype('undefined', {
 
 // numbers
 
-var INumber = itype('number', function (value) {
+var INumber = itype('number', IValue, function (value) {
     this.value = value;
 });
 
@@ -112,7 +121,7 @@ INumber.prototype['*'] = function(other) {
 
 // strings
 
-var IString = itype('string', function (value) {
+var IString = itype('string', IValue, function (value) {
     this.value = value;
 });
 
@@ -146,6 +155,8 @@ var js_type_to_ivalue = {
     object: function (val, cont, econt) {
         if (val instanceof IValue)
             return val.force(cont, econt);
+        else if (val instanceof Array)
+            return tramp(cont, new IArray(val));
         else
             return tramp(cont, new IObject(val));
     },
@@ -170,7 +181,7 @@ function invoke(fun, args, cont, econt) {
 
 // User-defined functions
 
-var IUserFunction = itype('function', function (node, env) {
+var IUserFunction = itype('function', IValue, function (node, env) {
     this.node = node;
     this.env = env;
 });
@@ -194,7 +205,7 @@ IUserFunction.prototype.invoke = function (args, env, cont, econt) {
 
 // Built-in functions
 
-var IBuiltinFunction = itype('built-in function');
+var IBuiltinFunction = itype('built-in function', IValue);
 
 IBuiltinFunction.prototype.toString = function () {
     return '[Built-in Function]';
@@ -261,7 +272,7 @@ function promised_builtin(fun) {
 
 // Objects
 
-var IObject = itype('object', function (obj) {
+var IObject = itype('object', IValue, function (obj) {
     this.obj = obj;
 });
 
@@ -281,6 +292,54 @@ IObject.prototype.property = function (key, cont, econt) {
             return tramp(cont);
         }
     });
+};
+
+IObject.prototype.invokeMethod = function (name, args, env, cont, econt) {
+    // Try methods first
+    var m = this.methods[name];
+    if (m)
+        return m.call(this, args, env, cont, econt);
+
+    // Otherwise interpret method invocations as property accesses
+    var obj = this.obj;
+    var prop = obj.hasOwnProperty(name) ? force(obj[name]) : iundefined;
+    return prop.invoke(args, env, cont, econt);
+};
+
+
+// Arrays
+
+var IArray = itype('array', IObject, function (obj) {
+    this.obj = obj;
+});
+
+IArray.prototype.methods.map = function (args, env, cont, econt) {
+    var res = [];
+    var arr = this.obj;
+
+    function do_elems(i) {
+        if (i == arr.length)
+            return tramp(cont, res);
+
+        var elem = arr[i];
+        var subenv = env;
+
+        // If the element is an object, turn it into a frame in the
+        // environment
+        if (typeof(elem) === 'object')
+            subenv = new Environment(subenv, elem);
+
+        // And bind the element as '_'
+        subenv = new Environment(subenv);
+        subenv.bind('_', elem);
+
+        return subenv.evaluate(args[0], function (mapped) {
+            res.push(mapped);
+            return do_elems(i + 1);
+        }, econt);
+    }
+
+    return do_elems(0);
 };
 
 
@@ -515,7 +574,8 @@ var evaluate_type = {
         if (node.name.type == 'PropertyAccess') {
             // It might be a method call
             return env.evaluateForced(node.name.base, function (base) {
-                return base.invokeMethod(node.arguments, env, cont, econt);
+                return base.invokeMethod(node.name.name, node.arguments,
+                                         env, cont, econt);
             }, econt);
         }
         else {
@@ -656,68 +716,6 @@ builtins.bind('lazy', deferred_builtin(function (args, env, cont, econt) {
     return tramp(cont, new ILazy(args[0], env));
 }));
 
-builtins.bind('map', deferred_builtin(function (args, env, cont, econt) {
-    return env.evaluate(args[0], function (arr) {
-        var res = [];
-
-        function do_elems(i) {
-            if (i == arr.length)
-                return tramp(cont, res);
-
-            var elem = arr[i];
-            var subenv = env;
-
-            // If the element is an object, turn it into a frame in
-            // the environment
-            if (typeof(elem) === 'object')
-                subenv = new Environment(subenv, elem);
-
-            // And bind the element as '_'
-            subenv = new Environment(subenv);
-            subenv.bind('_', elem);
-
-            return subenv.evaluate(args[1], function (mapped) {
-                res.push(mapped);
-                return do_elems(i + 1);
-            }, econt);
-        }
-
-        return do_elems(0);
-    }, econt);
-}));
-
-builtins.bind('filter', deferred_builtin(function (args, env, cont, econt) {
-    return env.evaluate(args[0], function (arr) {
-        var res = [];
-
-        function do_elems(i) {
-            if (i == arr.length)
-                return tramp(cont, res);
-
-            var elem = arr[i];
-            var subenv = env;
-
-            // If the element is an object, turn it into a frame in
-            // the environment
-            if (typeof(elem) === 'object')
-                subenv = new Environment(subenv, elem);
-
-            // And bind the element as '_'
-            subenv = new Environment(subenv);
-            subenv.bind('_', elem);
-
-            return subenv.evaluate(args[1], function (pred) {
-                if (pred)
-                    res.push(elem);
-
-                return do_elems(i + 1);
-            }, econt);
-        }
-
-        return do_elems(0);
-    }, econt);
-}));
-
 function run(p) {
     builtins.run(p,
                  function (val) { console.log("=> " + val); },
@@ -731,7 +729,7 @@ function run(p) {
 //run("print(callcc(function (c) { c('Hello'); }))");
 //run("var x; callcc(function (c) { x = c; }); print('Hello'); x();");
 //run("function intsFrom(n) { lazy({head: n, tail: intsFrom(n+1)}); } intsFrom(0).tail.tail.tail.head;");
-//run("map([1,2,3], _*2)");
+//run("[1,2,3].map(_*2)");
 //run("try { (function (n) { var x = n+1; print(x); throw 'bang'; 42; })(69); } catch (e) { print('oops: ' + e); 69; }");
 
 module.exports.builtins = builtins;
