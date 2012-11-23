@@ -5,13 +5,39 @@ var util = require('util');
 
 // Basic interpreter machinery
 
+var counter = 0;
+
 function tramp(cont, val) {
-    return { cont: cont, val: val };
+    return { cont: cont, val: val, counter: ++counter };
 }
 
 function oline(t) {
-    while (t)
+    while (t) {
+        if (t.counter != counter) {
+            console.error("OOPS! " + t.counter + " " + counter);
+            console.error("Tramp: " + t);
+            console.error("Continuation: " + t.cont);
+            console.error("Value: " + t.val);
+        }
+
         t = t.cont(t.val);
+    }
+}
+
+// Takes a non-CPS function (one that simply returns its result), and
+// wraps it to take the cont and econt parameters.
+function continuate(fun) {
+    return function (/* ... cont, econt */) {
+        var args = Array.prototype.slice.call(arguments, 0,
+                                              arguments.length - 2);
+        try {
+            return tramp(arguments[arguments.length - 2],
+                         fun.apply(this, args));
+        }
+        catch (e) {
+            return tramp(arguments[arguments.length - 1], e);
+        }
+    };
 }
 
 
@@ -35,6 +61,10 @@ IValue.prototype.toNumber = function () {
     throw new Error(this.typename + ' is not a number');
 };
 
+IValue.prototype.toJSValue = function () {
+    return this;
+};
+
 var binary_operators = ['+', '-', '*'];
 binary_operators.forEach(function (op) {
     IValue.prototype[op] = function (other) {
@@ -50,7 +80,11 @@ IValue.prototype.invoke = function (args, env, cont, econt) {
     return tramp(econt, new Error(this.typename + ' is not a function'));
 };
 
-IValue.prototype.property = function (key, cont, econt) {
+IValue.prototype.getProperty = function (key, cont, econt) {
+    return tramp(econt, new Error(this.typename + ' is not an object'));
+};
+
+IValue.prototype.setProperty = function (key, val, cont, econt) {
     return tramp(econt, new Error(this.typename + ' is not an object'));
 };
 
@@ -72,8 +106,9 @@ function itype(name, parent, constr) {
 }
 
 function singleton_itype(name, props) {
-    var constr = itype(name, IValue);
-    var singleton = new constr();
+    var singleton = new IValue();
+    singleton.typename = name;
+    singleton.methods = {};
     for (var p in props)
         singleton[p] = props[p];
     return singleton;
@@ -84,7 +119,8 @@ function singleton_itype(name, props) {
 
 var iundefined = singleton_itype('undefined', {
     truthy: function () { return false; },
-    toString: function () { return 'undefined'; }
+    toString: function () { return 'undefined'; },
+    toJSValue: function () { return undefined; },
 });
 
 
@@ -104,6 +140,10 @@ INumber.prototype.toNumber = function () {
 
 INumber.prototype.toString = function () {
     return String(this.value);
+};
+
+INumber.prototype.toJSValue = function () {
+    return this.value;
 };
 
 INumber.prototype['+'] = function(other) {
@@ -133,6 +173,10 @@ IString.prototype.toString = function () {
     return this.value;
 };
 
+IString.prototype.toJSValue = function () {
+    return this.value;
+};
+
 IString.prototype['+'] = function(other) {
     return this.value + other.toString();
 };
@@ -140,35 +184,62 @@ IString.prototype['+'] = function(other) {
 
 // How to convert JS values to IValues
 var js_type_to_ivalue = {
-    undefined: function (val, cont, econt) {
-        return tramp(cont, iundefined);
-    },
-
-    number: function (val, cont, econt) {
-        return tramp(cont, new INumber(val));
-    },
-
-    string: function (val, cont, econt) {
-        return tramp(cont, new IString(val));
-    },
-
-    object: function (val, cont, econt) {
+    undefined: function (val) { return iundefined; },
+    number: function (val) { return new INumber(val); },
+    string: function (val) { return new IString(val); },
+    object: function (val) {
         if (val instanceof IValue)
-            return val.force(cont, econt);
+            return val;
         else if (val instanceof Array)
-            return tramp(cont, new IArray(val));
+            return new IArray(val);
         else
-            return tramp(cont, new IObject(val));
+            return new IObject(val);
     },
 };
 
-function force(val, cont, econt) {
-    var handler = js_type_to_ivalue[typeof(val)];
-    if (handler)
-        return handler(val, cont, econt);
+// Convert a value, that may be a JS value or already an IValue, to
+// the corresponding IValue.
+IValue.from_js = function (jsval) {
+    var convert = js_type_to_ivalue[typeof(jsval)];
+    if (convert)
+        return convert(jsval);
     else
-        return tramp(econt, new Error("mysterious value " + val));
+        throw new Error("mysterious value " + jsval);
+};
+
+// Convert to an IValue then force it.  This is usually what you want,
+// not IValue.from_js, because if you want to get an IValue, your
+// probably about to do something with it that is conceptually
+// 'forcing'.
+function force(val, cont, econt) {
+    // Verify that econt is always supplied, it's easy to overlook
+    if (!econt)
+        throw Error("missing econt");
+
+    try {
+        return IValue.from_js(val).force(cont, econt);
+    }
+    catch (e) {
+        return tramp(econt, e);
+    }
 }
+
+// Force a value then call a method on the resulting IValue.
+function forced(val, method /* ..., cont, econt */) {
+    var args = Array.prototype.slice.call(arguments, 2)
+    return force(val, function (val) {
+        return val[method].apply(val, args);
+    }, arguments[arguments.length-1]);
+}
+
+// Convert a value, that may be an IValue or already a JS value, to
+// the corresponding JS value.
+IValue.to_js = function (val) {
+    if (val instanceof IValue)
+        return val.toJSValue();
+    else
+        return val;
+};
 
 // Invoke an interpreter function with JS arguments
 function invoke(fun, args, cont, econt) {
@@ -219,7 +290,7 @@ function deferred_builtin(fun) {
     return res;
 }
 
-// A builtin that gets its arguments evaluated, but also recieves the
+// A builtin that gets its arguments evaluated, but also receives the
 // continuations.
 function strict_builtin(fun) {
     var res = new IBuiltinFunction();
@@ -280,18 +351,16 @@ IObject.prototype.toString = function () {
     return util.inspect(this.obj);
 };
 
-IObject.prototype.property = function (key, cont, econt) {
-    var obj = this.obj;
-    return tramp(cont, {
-        get: function (cont, econt) {
-            // Avoid the prototype chain
-            return tramp(cont, obj.hasOwnProperty(key) ? obj[key] : iundefined);
-        },
-        set: function (val, cont, econt) {
-            obj[key] = val;
-            return tramp(cont);
-        }
-    });
+IObject.prototype.getProperty = function (key, cont, econt) {
+    key = IValue.to_js(key);
+    // Avoid the prototype chain
+    return tramp(cont, this.obj.hasOwnProperty(key) ? this.obj[key]
+                                                    : iundefined);
+};
+
+IObject.prototype.setProperty = function (key, val, cont, econt) {
+    this.obj[IValue.to_js(key)] = val;
+    return tramp(cont);
 };
 
 IObject.prototype.invokeMethod = function (name, args, env, cont, econt) {
@@ -301,10 +370,174 @@ IObject.prototype.invokeMethod = function (name, args, env, cont, econt) {
         return m.call(this, args, env, cont, econt);
 
     // Otherwise interpret method invocations as property accesses
-    var obj = this.obj;
-    var prop = obj.hasOwnProperty(name) ? force(obj[name]) : iundefined;
-    return prop.invoke(args, env, cont, econt);
+    var prop = this.obj.hasOwnProperty(name) ? this.obj[name] : iundefined;
+    return forced(prop, 'invoke', args, env, cont, econt);
 };
+
+
+// Lazies
+
+var ILazy = itype('lazy', IValue, function (producer) {
+    this.producer = producer;
+});
+
+ILazy.prototype.toString = function () {
+    if (this.producer)
+        return 'lazy(unforced)';
+    else if ('value' in this)
+        return 'lazy(forced: ' + self.value + ')';
+    else if ('error' in this)
+        return 'lazy(error: ' + self.error + ')';
+    else
+        return 'lazy(forcing)';
+};
+
+ILazy.prototype.force = function (cont, econt) {
+    this.force = ILazy.forcing;
+    var self = this;
+
+    function on_value(val) {
+        self.force = ILazy.forced;
+        self.producer = null;
+        self.value = val;
+
+        if (self.conts) {
+            while (self.conts) {
+                oline(cont(val));
+                cont = self.conts.pop();
+            }
+
+            self.conts = null;
+            self.econts = null;
+        }
+
+        return tramp(cont, val);
+    }
+
+    function on_error(err) {
+        self.force = ILazy.error;
+        self.producer = null;
+        self.error = err;
+
+        if (self.econts) {
+            while (self.econts) {
+                oline(econt(err));
+                econt = self.econts.pop();
+            }
+
+            self.conts = null;
+            self.econts = null;
+        }
+
+        return tramp(econt, err);
+    }
+
+    return this.producer(function (val) {
+        return force(val, on_value, on_error);
+    }, on_error);
+};
+
+ILazy.forcing = function (cont, econt) {
+    if (!this.conts) {
+        this.conts = [];
+        this.econts = [];
+    }
+
+    this.conts.push(cont);
+    this.econts.push(econt);
+};
+
+ILazy.forced = function (cont, econt) {
+    return tramp(cont, this.value);
+};
+
+ILazy.error = function (cont, econt) {
+    return tramp(econt, this.error);
+};
+
+
+// Sequences
+
+var inil = singleton_itype('nil', {
+    truthy: function () { return false; },
+    toString: function () { return '[]'; },
+    getProperty: continuate(function (key) { return iundefined; }),
+    addToArray: continuate(function (arr) {}),
+});
+
+inil.methods.map = continuate(function (args, env) { return inil; });
+inil.methods.toArray = continuate(function (arr) { return []; });
+
+var ICons = itype('cons', IValue, function (head, tail) {
+    this.head = head;
+    this.tail = tail;
+});
+
+ICons.prototype.toString = function () {
+    return '[' + IValue.from_js(this.head) + ' | ' + this.tail + ']';
+};
+
+ICons.prototype.getProperty = function (key, cont, econt) {
+    key = IValue.to_js(key);
+    if (key === 0)
+        return tramp(cont, this.head);
+    else if (typeof(key) === 'number')
+        return forced(this.tail, 'getProperty', key - 1, cont, econt);
+    else
+        return tramp(cont, iundefined);
+};
+
+ICons.prototype.addToArray = function (arr, cont, econt) {
+    arr.push(this.head);
+    return forced(this.tail, 'addToArray', arr, cont, econt);
+};
+
+ICons.prototype.methods.toArray = function (args, env, cont, econt) {
+    var res = [];
+    return this.addToArray(res, function () { return tramp(cont, res); },
+                           econt);
+};
+
+ICons.range = function (from, to) {
+    from = IValue.to_js(from);
+    to = IValue.to_js(to);
+
+    if (from === to)
+        return inil;
+    else
+        return new ILazy(function (cont, econt) {
+            return tramp(cont,
+                       new ICons(from, ICons.range(from + 1, to, cont, econt)));
+        });
+};
+
+function apply_defarg(defarg, env, elem, cont, econt) {
+    var subenv = env;
+
+    // If the element is an object, turn it into a frame in the
+    // environment
+    if (typeof(elem) === 'object')
+        subenv = new Environment(subenv, elem);
+
+    // And bind the element as '_'
+    subenv = new Environment(subenv);
+    subenv.bind('_', elem);
+
+    return subenv.evaluate(defarg, cont, econt);
+}
+
+ICons.prototype.methods.map = continuate(function (args, env) {
+    var self = this;
+
+    return new ILazy(function (cont, econt) {
+        return apply_defarg(args[0], env, self.head, function (head) {
+            return forced(self.tail, 'invokeMethod', 'map', args, env,
+                          function (tail) {
+                              return tramp(cont, new ICons(head, tail));
+                          }, econt);
+        }, econt);
+    });
+});
 
 
 // Arrays
@@ -313,76 +546,29 @@ var IArray = itype('array', IObject, function (obj) {
     this.obj = obj;
 });
 
-IArray.prototype.methods.map = function (args, env, cont, econt) {
-    var res = [];
+IArray.prototype.toSequence = function () {
     var arr = this.obj;
 
-    function do_elems(i) {
+    function sequence_from(i) {
         if (i == arr.length)
-            return tramp(cont, res);
-
-        var elem = arr[i];
-        var subenv = env;
-
-        // If the element is an object, turn it into a frame in the
-        // environment
-        if (typeof(elem) === 'object')
-            subenv = new Environment(subenv, elem);
-
-        // And bind the element as '_'
-        subenv = new Environment(subenv);
-        subenv.bind('_', elem);
-
-        return subenv.evaluate(args[0], function (mapped) {
-            res.push(mapped);
-            return do_elems(i + 1);
-        }, econt);
+            return inil;
+        else
+            return new ICons(arr[i], new ILazy(function (cont, econt) {
+                return tramp(cont, sequence_from(i + 1, cont, econt));
+            }));
     }
 
-    return do_elems(0);
+    return sequence_from(0);
 };
 
+IArray.prototype.methods.map = function (args, env, cont, econt) {
+    var seq = this.toSequence();
+    return seq.methods.map.call(seq, args, env, cont, econt);
+};
 
-// Lazies
-
-var ILazy = itype('lazy', function (node, env) {
-    this.node = node;
-    this.env = env;
+IArray.prototype.methods.toArray = continuate(function (args, env) {
+    return this;
 });
-
-ILazy.prototype.toString = function () {
-    if ('value' in this)
-        return 'lazy(forced: ' + this.value + ')';
-    else if ('error' in this)
-        return 'lazy(error: ' + this.value + ')';
-    else
-        return 'lazy(unforced)';
-};
-
-ILazy.prototype.force = function (cont, econt) {
-    if ('value' in this) {
-        return tramp(cont, this.value);
-    }
-    else if ('error' in this) {
-        return tramp(econt, this.error);
-    }
-    else {
-        var lazy = this;
-        return this.env.evaluateForced(this.node, function (v) {
-            lazy.env = lazy.node = null;
-            lazy.value = v;
-            return tramp(cont, v);
-        }, function foo(e) {
-            lazy.env = lazy.node = null;
-            lazy.error = e;
-            return tramp(econt, e);
-        });
-    }
-}
-
-//Lazy.prototype.methods.forced = function (args, env, cont, econt) {
-//    return tramp(cont, 'value' in this || 'error' in this);
-//};
 
 
 // Environments
@@ -471,6 +657,15 @@ Environment.prototype.evaluateStatements = function (stmts, cont, econt) {
     return do_elements(0, iundefined);
 };
 
+Environment.prototype.evaluatePropertyName = function (name, cont, econt) {
+    if (typeof(name) === 'object')
+        // it's a foo[bar] PropertyAccess
+        return this.evaluateForced(name, cont, econt);
+    else
+        // it's a foo.bar PropertyAccess
+        return tramp(cont, name);
+};
+
 
 // LValue support
 //
@@ -488,7 +683,16 @@ var evaluate_lvalue_type = {
 
     PropertyAccess: function (node, env, cont, econt) {
         return env.evaluateForced(node.base, function (base) {
-            return base.property(node.name, cont, econt);
+            return env.evaluatePropertyName(node.name, function (name) {
+                return tramp(cont, {
+                    get: function (cont, econt) {
+                        return base.getProperty(name, cont, econt);
+                    },
+                    set: function (val, cont, econt) {
+                        return base.setProperty(name, val, cont, econt);
+                    }
+                });
+            }, econt);
         }, econt);
     },
 };
@@ -574,8 +778,10 @@ var evaluate_type = {
         if (node.name.type == 'PropertyAccess') {
             // It might be a method call
             return env.evaluateForced(node.name.base, function (base) {
-                return base.invokeMethod(node.name.name, node.arguments,
-                                         env, cont, econt);
+                return env.evaluatePropertyName(node.name.name, function (name) {
+                    return base.invokeMethod(name, node.arguments, env,
+                                             cont, econt);
+                }, econt);
             }, econt);
         }
         else {
@@ -699,6 +905,9 @@ Environment.prototype.evaluate = function (node, cont, econt) {
 // Builtins
 
 var builtins = new Environment();
+builtins.bind('nil', inil);
+builtins.bind('undefined', iundefined);
+builtins.bind('range', builtin(ICons.range));
 
 builtins.bind('callcc', strict_builtin(function (args, cont, econt) {
     // Wrap the original continuation in a callable function
@@ -713,13 +922,15 @@ builtins.bind('callcc', strict_builtin(function (args, cont, econt) {
 }));
 
 builtins.bind('lazy', deferred_builtin(function (args, env, cont, econt) {
-    return tramp(cont, new ILazy(args[0], env));
+    return tramp(cont, new ILazy(function (cont2, econt2) {
+        return env.evaluateForced(args[0], cont2, econt2);
+    }));
 }));
 
 function run(p) {
     builtins.run(p,
-                 function (val) { console.log("=> " + val); },
-                 function (err) { console.log("=! " + err); },
+                 function (val) { console.log("=> " + IValue.from_js(val)); },
+                 function (err) { console.log("=! " + err.stack); },
                  true);
 }
 
@@ -728,9 +939,14 @@ function run(p) {
 //run("function foo(x) { print(x+1); } foo(42);");
 //run("print(callcc(function (c) { c('Hello'); }))");
 //run("var x; callcc(function (c) { x = c; }); print('Hello'); x();");
-//run("function intsFrom(n) { lazy({head: n, tail: intsFrom(n+1)}); } intsFrom(0).tail.tail.tail.head;");
-//run("[1,2,3].map(_*2)");
+//run("function intsFrom(n) { lazy({head: n, tail: intsFrom(n+1)}); } intsFrom(0).tail.tail.head");
 //run("try { (function (n) { var x = n+1; print(x); throw 'bang'; 42; })(69); } catch (e) { print('oops: ' + e); 69; }");
+
+//run("range(1,4).map(_*2).toArray()");
+//run("[1,2,3].map(_*2).toArray()");
+//run("[1,2,3].toArray()");
+
+//['dpw','squaremo'].map(get('https://api.github.com/users/'+_))
 
 module.exports.builtins = builtins;
 module.exports.Environment = Environment;
