@@ -97,6 +97,10 @@ IValue.prototype.invokeMethod = function (name, args, env, cont, econt) {
         tramp(econt, new Error('no method "' + name + '"'));
 };
 
+IValue.prototype.renderJSON = function (cont, econt) {
+    return tramp(cont, this.toJSValue());
+};
+
 function itype(name, parent, constr) {
     constr = constr || function () {};
     util.inherits(constr, parent);
@@ -349,6 +353,10 @@ IObject.prototype.toString = function () {
     return util.inspect(this.obj);
 };
 
+IValue.prototype.toJSValue = function () {
+    return this.obj;
+};
+
 IObject.prototype.getProperty = function (key, cont, econt) {
     key = IValue.to_js(key);
     // Avoid the prototype chain
@@ -453,6 +461,14 @@ ILazy.error = function (cont, econt) {
     return tramp(econt, this.error);
 };
 
+ILazy.prototype.renderJSON = function (cont, econt) {
+    return this.force(function (val) {
+        if (val instanceof IValue)
+            return val.renderJSON(cont, econt);
+        else
+            return tramp(cont, val);
+    }, econt);
+};
 
 // Sequences
 
@@ -461,6 +477,7 @@ var inil = singleton_itype('nil', {
     toString: function () { return '[]'; },
     getProperty: continuate(function (key) { return iundefined; }),
     addToArray: continuate(function (arr) {}),
+    renderJSON: continuate(function() { return []; }),
 
     im_map: continuate(function (args, env) { return inil; }),
     im_toArray: continuate(function () { return []; }),
@@ -473,6 +490,10 @@ var ICons = itype('cons', IValue, function (head, tail) {
 
 ICons.prototype.toString = function () {
     return '[' + IValue.from_js(this.head) + ' | ' + this.tail + ']';
+};
+
+ICons.prototype.renderJSON = function (cont, econt) {
+    return this.im_toArray([], null, cont, econt);
 };
 
 ICons.prototype.getProperty = function (key, cont, econt) {
@@ -565,7 +586,7 @@ IArray.prototype.im_map = function (args, env, cont, econt) {
 };
 
 IArray.prototype.im_toArray = continuate(function (args, env) {
-    return this;
+    return this.obj;
 });
 
 
@@ -587,11 +608,15 @@ Environment.prototype.run = function (p, cont, econt, dump_parse) {
         return;
     }
 
-    oline(this.evaluate(p, function (val) {
-        cont(val);
-    }, function (err) {
-        econt(err);
-    }));
+    oline(this.evaluate(p, cont, econt));
+};
+
+Environment.prototype.runForJSON = function (p, cont, econt, dump_parse) {
+    this.run(p, function (res) {
+        oline(IValue.from_js(res).renderJSON(function (json) {
+            cont(res, json);
+        }, econt));
+    }, econt, dump_parse);
 };
 
 Environment.prototype.bind = function (symbol, val) {
@@ -946,7 +971,7 @@ function run(p) {
 
 //['dpw','squaremo'].map(get('https://api.github.com/users/'+_))
 
-module.exports.builtins = builtins;
 module.exports.Environment = Environment;
+module.exports.builtins = builtins;
 module.exports.builtin = builtin;
 module.exports.promised_builtin = promised_builtin;
