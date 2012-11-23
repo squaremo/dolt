@@ -90,7 +90,7 @@ IValue.prototype.setProperty = function (key, val, cont, econt) {
 
 IValue.prototype.invokeMethod = function (name, args, env, cont, econt) {
     // If there is a method, call it
-    var m = this.methods[name];
+    var m = this['im_' + name];
     if (m)
         return m.call(this, args, env, cont, econt);
     else
@@ -101,14 +101,12 @@ function itype(name, parent, constr) {
     constr = constr || function () {};
     util.inherits(constr, parent);
     constr.prototype.typename = name;
-    constr.prototype.methods = {};
     return constr;
 }
 
 function singleton_itype(name, props) {
     var singleton = new IValue();
     singleton.typename = name;
-    singleton.methods = {};
     for (var p in props)
         singleton[p] = props[p];
     return singleton;
@@ -365,7 +363,7 @@ IObject.prototype.setProperty = function (key, val, cont, econt) {
 
 IObject.prototype.invokeMethod = function (name, args, env, cont, econt) {
     // Try methods first
-    var m = this.methods[name];
+    var m = this['im_'+name];
     if (m)
         return m.call(this, args, env, cont, econt);
 
@@ -463,10 +461,10 @@ var inil = singleton_itype('nil', {
     toString: function () { return '[]'; },
     getProperty: continuate(function (key) { return iundefined; }),
     addToArray: continuate(function (arr) {}),
-});
 
-inil.methods.map = continuate(function (args, env) { return inil; });
-inil.methods.toArray = continuate(function (arr) { return []; });
+    im_map: continuate(function (args, env) { return inil; }),
+    im_toArray: continuate(function () { return []; }),
+});
 
 var ICons = itype('cons', IValue, function (head, tail) {
     this.head = head;
@@ -492,7 +490,7 @@ ICons.prototype.addToArray = function (arr, cont, econt) {
     return forced(this.tail, 'addToArray', arr, cont, econt);
 };
 
-ICons.prototype.methods.toArray = function (args, env, cont, econt) {
+ICons.prototype.im_toArray = function (args, env, cont, econt) {
     var res = [];
     return this.addToArray(res, function () { return tramp(cont, res); },
                            econt);
@@ -526,12 +524,12 @@ function apply_defarg(defarg, env, elem, cont, econt) {
     return subenv.evaluate(defarg, cont, econt);
 }
 
-ICons.prototype.methods.map = continuate(function (args, env) {
+ICons.prototype.im_map = continuate(function (args, env) {
     var self = this;
 
     return new ILazy(function (cont, econt) {
         return apply_defarg(args[0], env, self.head, function (head) {
-            return forced(self.tail, 'invokeMethod', 'map', args, env,
+            return forced(self.tail, 'im_map', args, env,
                           function (tail) {
                               return tramp(cont, new ICons(head, tail));
                           }, econt);
@@ -561,12 +559,12 @@ IArray.prototype.toSequence = function () {
     return sequence_from(0);
 };
 
-IArray.prototype.methods.map = function (args, env, cont, econt) {
+IArray.prototype.im_map = function (args, env, cont, econt) {
     var seq = this.toSequence();
-    return seq.methods.map.call(seq, args, env, cont, econt);
+    return seq.im_map.call(seq, args, env, cont, econt);
 };
 
-IArray.prototype.methods.toArray = continuate(function (args, env) {
+IArray.prototype.im_toArray = continuate(function (args, env) {
     return this;
 });
 
