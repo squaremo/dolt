@@ -4,7 +4,7 @@ PEGJS:=./node_modules/pegjs/bin/pegjs
 
 parsers: node_modules/pegjs server/javascript.js
 
-server/javascript.js:
+server/javascript.js: server/javascript.pegjs
 	$(PEGJS) server/javascript.pegjs server/javascript.js
 
 test: node_modules/nodeunit
