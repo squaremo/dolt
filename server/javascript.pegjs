@@ -392,6 +392,7 @@ VarToken        = "var"              !IdentifierPart
 VoidToken       = "void"             !IdentifierPart { return "void"; }
 WhileToken      = "while"            !IdentifierPart
 WithToken       = "with"             !IdentifierPart
+YieldToken      = "yield"            !IdentifierPart
 
 /*
  * Unicode Character Categories
@@ -490,6 +491,9 @@ ArrayLiteral
         elements: elements !== "" ? elements : []
       };
     }
+  / "[" __ e:ComprehensionExpression __ "]" {
+      return e;
+    };
 
 ElementList
   = (Elision __)?
@@ -504,6 +508,16 @@ ElementList
 
 Elision
   = "," (__ ",")*
+
+ComprehensionExpression
+  = yield:Expression _ ForToken _ generate:Expression
+    {
+      return {
+        type: 'ComprehensionExpression',
+        yield: yield,
+        generate: generate
+      };
+    };
 
 ObjectLiteral
   = "{" __ properties:(PropertyNameAndValueList __ ("," __)?)? "}" {

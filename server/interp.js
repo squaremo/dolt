@@ -340,7 +340,6 @@ function promised_builtin(fun) {
     return res;
 }
 
-
 // Objects
 
 var IObject = itype('object', IValue, function (obj) {
@@ -875,7 +874,30 @@ var evaluate_type = {
 
         return do_elems(0);
     },
+
+    ComprehensionExpression: function (node, env, cont, econt) {
+        var generateExpr = node.generate;
+        var yieldExpr = node.yield;
+        return env.evaluate(generateExpr, function(seq) {
+            return forced(seq, 'invokeMethod', 'map', [yieldExpr], env, cont, econt);
+        }, econt);
+    },
 };
+
+/*
+ILoopFunction.prototype.invoke = function (args, env, cont, econt) {
+    var fun = this;
+    return env.evaluateArgs(args, function (evaled_args) {
+        var subenv = new Environment(fun.env);
+        var params = fun.node.params;
+        for (var i = 0; i < params.length; i++)
+            subenv.bind(params[i], evaled_args[i]);
+
+        return subenv.evaluateStatements(fun.node.elements, cont, econt);
+    }, econt);
+};
+*/
+
 
 function lvalue_handler_to_rvalue_handler(lvalue_handler) {
     return function (node, env, cont, econt) {
