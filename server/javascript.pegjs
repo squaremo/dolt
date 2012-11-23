@@ -544,6 +544,13 @@ PropertyAssignment
         value: value
       };
     }
+  / name:PropertyName {
+      return {
+        type: "PropertyAssignment",
+        name: name,
+        value: {type: "Variable", name: name}
+      };
+    }
   / GetToken __ name:PropertyName __
     "(" __ ")" __
     "{" __ body:FunctionBody __ "}" {
