@@ -902,7 +902,7 @@ var evaluate_type = {
         var generateExpr = node.generate;
         var yieldExpr = node.yield;
         return env.evaluate(generateExpr, function(seq) {
-            return forced(seq, 'invokeMethod', 'map', [yieldExpr], env, cont, econt);
+            return forced(seq, 'im_map', [yieldExpr], env, cont, econt);
         }, econt);
     },
 };
