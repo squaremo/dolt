@@ -65,7 +65,7 @@ IValue.prototype.toJSValue = function () {
     return this;
 };
 
-var binary_operators = ['+', '-', '*'];
+var binary_operators = ['+', '-', '*', '<'];
 binary_operators.forEach(function (op) {
     IValue.prototype[op] = function (other) {
         throw new Error(this.typename + ' is not a number');
@@ -125,6 +125,15 @@ var iundefined = singleton_itype('undefined', {
     toJSValue: function () { return undefined; },
 });
 
+// booleans
+
+var IBoolean = itype('boolean', IValue, function (value) {
+    this.value = value;
+});
+
+IBoolean.prototype.truthy = function() { return this.value; };
+IBoolean.prototype.toString = function() {return String(this.value);};
+IBoolean.prototype.toJSValue = function() { return this.value; };
 
 // numbers
 
@@ -160,6 +169,9 @@ INumber.prototype['*'] = function(other) {
     return this.value * other.toNumber();
 };
 
+INumber.prototype['<'] = function(other) {
+    return this.value < other.toNumber();
+};
 
 // strings
 
@@ -188,6 +200,7 @@ IString.prototype['+'] = function(other) {
 var js_type_to_ivalue = {
     undefined: function (val) { return iundefined; },
     number: function (val) { return new INumber(val); },
+    boolean: function (val) { return new IBoolean(val); },
     string: function (val) { return new IString(val); },
     object: function (val) {
         if (val instanceof IValue)
@@ -477,8 +490,11 @@ var inil = singleton_itype('nil', {
     getProperty: continuate(function (key) { return iundefined; }),
     addToArray: continuate(function (arr) {}),
     renderJSON: continuate(function() { return []; }),
+    toSequence: function() { return this; },
 
     im_map: continuate(function (args, env) { return inil; }),
+    im_concat: continuate(function() { return inil; }),
+    im_filter: continuate(function() { return inil; }),
     im_toArray: continuate(function () { return []; }),
 });
 
@@ -493,6 +509,10 @@ ICons.prototype.toString = function () {
 
 ICons.prototype.renderJSON = function (cont, econt) {
     return this.im_toArray([], null, cont, econt);
+};
+
+ICons.prototype.toSequence = function () {
+    return this;
 };
 
 ICons.prototype.getProperty = function (key, cont, econt) {
@@ -529,7 +549,29 @@ ICons.range = function (from, to) {
         });
 };
 
-function apply_defarg(defarg, env, elem, cont, econt) {
+// flatten a sequence of sequences
+ICons.prototype.im_concat = continuate(function(args, env) {
+    function inner(lseq, lrest) {
+        return new ILazy(function(cont, econt) {
+            console.log({SEQ: lseq});
+            return force(lseq, function(seq) {
+                seq = seq.toSequence();
+                if (seq === inil) {
+                    console.log({NIL: lrest});
+                    return forced(lrest, 'im_concat', args, env, cont, econt);
+                }
+                else {
+                    console.log({CONS: seq});
+                    return tramp(cont, new ICons(seq.head, inner(seq.tail, lrest)));
+                }
+            }, econt);
+        });
+    }
+
+    return inner(this.head, this.tail);
+});
+
+function apply_defarg(defarg, loopvar, env, elem, cont, econt) {
     var subenv = env;
 
     // If the element is an object, turn it into a frame in the
@@ -537,18 +579,18 @@ function apply_defarg(defarg, env, elem, cont, econt) {
     if (typeof(elem) === 'object')
         subenv = new Environment(subenv, elem);
 
-    // And bind the element as '_'
+    // And bind the element as loopvar (or '_' if not supplied)
+    loopvar = loopvar || '_';
     subenv = new Environment(subenv);
-    subenv.bind('_', elem);
+    subenv.bind(loopvar, elem);
 
     return subenv.evaluate(defarg, cont, econt);
 }
 
 ICons.prototype.im_map = continuate(function (args, env) {
     var self = this;
-
     return new ILazy(function (cont, econt) {
-        return apply_defarg(args[0], env, self.head, function (head) {
+        return apply_defarg(args[0], args[1], env, self.head, function (head) {
             return forced(self.tail, 'im_map', args, env,
                           function (tail) {
                               return tramp(cont, new ICons(head, tail));
@@ -557,6 +599,19 @@ ICons.prototype.im_map = continuate(function (args, env) {
     });
 });
 
+ICons.prototype.im_filter = continuate(function(args, env) {
+    var self = this, fn = args[0], name = args[1];
+    return new ILazy(function (cont, econt) {
+        return apply_defarg(fn, name, env, self.head, function(pass) {
+            return forced(
+                self.tail, 'im_filter', args, env,
+                function(tail) {
+                    return tramp(
+                        cont, (pass) ? new ICons(self.head, tail) : tail);
+                }, econt);
+        }, econt);
+    });
+});
 
 // Arrays
 
@@ -582,6 +637,16 @@ IArray.prototype.toSequence = function () {
 IArray.prototype.im_map = function (args, env, cont, econt) {
     var seq = this.toSequence();
     return seq.im_map.call(seq, args, env, cont, econt);
+};
+
+IArray.prototype.im_concat = function (args, env, cont, econt) {
+    var seq = this.toSequence();
+    return seq.im_concat.call(seq, args, env, cont, econt);
+};
+
+IArray.prototype.im_filter = function (args, env, cont, econt) {
+    var seq = this.toSequence();
+    return seq.im_filter.call(seq, args, env, cont, econt);
 };
 
 IArray.prototype.im_toArray = continuate(function (args, env) {
@@ -898,29 +963,30 @@ var evaluate_type = {
         return do_elems(0);
     },
 
-    ComprehensionExpression: function (node, env, cont, econt) {
+    ComprehensionMapExpression: function (node, env, cont, econt) {
         var generateExpr = node.generate;
         var yieldExpr = node.yield;
+        var loopVar = node.name;
         return env.evaluate(generateExpr, function(seq) {
-            return forced(seq, 'im_map', [yieldExpr], env, cont, econt);
+            return forced(seq, 'im_map', [yieldExpr, loopVar],
+                          env, cont, econt);
+        }, econt);
+    },
+    
+    ComprehensionConcatMapExpression: function(node, env, cont, econt) {
+        var generateExpr = node.generate;
+        var yieldExpr = node.yield;
+        var loopVar = node.name;
+        return env.evaluate(generateExpr, function(seq) {
+            return forced(seq, 'im_map', [yieldExpr, loopVar],
+                          env, function(seqOfSeqs) {
+                              return forced(
+                                  seqOfSeqs, 'im_concat',
+                                  [], env, cont, econt);
+                          }, econt);
         }, econt);
     },
 };
-
-/*
-ILoopFunction.prototype.invoke = function (args, env, cont, econt) {
-    var fun = this;
-    return env.evaluateArgs(args, function (evaled_args) {
-        var subenv = new Environment(fun.env);
-        var params = fun.node.params;
-        for (var i = 0; i < params.length; i++)
-            subenv.bind(params[i], evaled_args[i]);
-
-        return subenv.evaluateStatements(fun.node.elements, cont, econt);
-    }, econt);
-};
-*/
-
 
 function lvalue_handler_to_rvalue_handler(lvalue_handler) {
     return function (node, env, cont, econt) {

@@ -510,13 +510,25 @@ Elision
   = "," (__ ",")*
 
 ComprehensionExpression
-  = yield:Expression _ ForToken _ generate:Expression
+  = yield:Expression _ ForToken name:(_ Identifier _ InToken)?
+    _ generate:Expression tail:(__ ';' __ Identifier _ InToken _ Expression)*
     {
-      return {
-        type: 'ComprehensionExpression',
-        yield: yield,
-        generate: generate
-      };
+      name = (name !== "") ? name[1] : null;
+      var expr = yield;
+      tail.unshift([,,,name,,,,generate]);
+
+      for (var i=tail.length-1; i >= 0; i--) {
+        var t = (i==tail.length-1) ?
+             'ComprehensionMapExpression' :
+             'ComprehensionConcatMapExpression';
+        expr = {
+          type: t,
+          yield: expr,
+          name: tail[i][3],
+          generate: tail[i][7]
+        }
+      }
+      return expr;
     };
 
 ObjectLiteral
