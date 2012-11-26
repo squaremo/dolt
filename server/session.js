@@ -96,10 +96,10 @@ Session.prototype.eval = function (expr) {
         self.saveHistory();
 
         var d = when.defer();
-        self.env.run(expr, function (val) {
+        self.env.runForJSON(expr, function (val, json) {
             self.env.bind(history_entry.variable, val);
             history_entry.in_progress = false;
-            history_entry.result = { type: 'ground', value: val };
+            history_entry.result = { type: 'ground', value: json };
             self.saveHistory();
             d.resolve(history_entry);
         }, function (err) {
