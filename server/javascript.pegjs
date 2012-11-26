@@ -511,21 +511,26 @@ Elision
 
 ComprehensionExpression
   = yield:Expression _ ForToken name:(_ Identifier _ InToken)?
-    _ generate:Expression tail:(__ ';' __ Identifier _ InToken _ Expression)*
+    _ generate:Expression tail:(__ ';' __ Identifier _ InToken _
+  Expression)* guard:(_ IfToken _ Expression)?
     {
-      name = (name !== "") ? name[1] : null;
+      name = (name !== "") ? name[1] : false;
+      guard = (guard !== "") ? guard[3] : false;
       var expr = yield;
       tail.unshift([,,,name,,,,generate]);
 
       for (var i=tail.length-1; i >= 0; i--) {
-        var t = (i==tail.length-1) ?
-             'ComprehensionMapExpression' :
-             'ComprehensionConcatMapExpression';
         expr = {
-          type: t,
           yield: expr,
           name: tail[i][3],
           generate: tail[i][7]
+        }
+        if (i==tail.length-1) {
+          expr.type = 'ComprehensionMapExpression';
+          expr.guard = guard;
+        }
+        else {
+          expr.type = 'ComprehensionConcatMapExpression';
         }
       }
       return expr;
