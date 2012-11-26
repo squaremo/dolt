@@ -360,31 +360,10 @@ var TreeControl = (function () {
     };
 })();
 
-var ResultControl = {
-    install: function (container, view, symbol, data) {
-        var valdiv = $('<div class="resultval"/>');
-
-        container.empty()
-            .append($('<var/>').addClass('resultvar').text(symbol))
-            .append(valdiv);
-
-        view.install(valdiv, data);
-    }
-};
-
 $(function() {
     var repl = $('#repl');
     var current;
     var eval_uri = "/eval";
-
-    var CONTROLS = {
-        'table': TableControl,
-        'ground': TreeControl
-    };
-
-    function viewFor(result) {
-        return CONTROLS[result.type];
-    }
 
     var spin = $('<img/>').attr('src', 'ajax-loader.gif');
     var form = $('<form/>').addClass('prompt')
@@ -412,11 +391,13 @@ $(function() {
         output.empty();
 
         if (response.hasOwnProperty('result')) {
-            var result = response.result;
             var resdiv = $('<div/>').addClass('result');
             output.append(resdiv);
-            var view = viewFor(result);
-            ResultControl.install(resdiv, view, response.variable, result.value);
+
+            var vardiv = $('<var class="resultvar"/>').text(response.variable);
+            var valdiv = $('<div class="resultval"/>');
+            resdiv.append(vardiv).append(valdiv);
+            TreeControl.install(valdiv, response.result);
         }
         else {
             output.append($('<span/>').text("Error: " + response.error));

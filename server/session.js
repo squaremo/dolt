@@ -37,7 +37,7 @@ function Session() {
     }).then(function (history) {
         for (var i = 0; i < history.length; i++)
             if (history[i].result)
-                self.env.bind(history[i].variable, history[i].result.value);
+                self.env.bind(history[i].variable, history[i].result);
 
         return history;
     });
@@ -99,7 +99,7 @@ Session.prototype.eval = function (expr) {
         self.env.runForJSON(expr, function (val, json) {
             self.env.bind(history_entry.variable, val);
             history_entry.in_progress = false;
-            history_entry.result = { type: 'ground', value: json };
+            history_entry.result = json;
             self.saveHistory();
             d.resolve(history_entry);
         }, function (err) {
