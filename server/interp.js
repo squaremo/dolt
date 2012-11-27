@@ -247,6 +247,20 @@ function forced(val, method /* ..., cont, econt */) {
     }, arguments[arguments.length-1]);
 }
 
+function forceAll(vals, cont, econt) {
+    var forced = [];
+    function do_vals(i) {
+        if (i == vals.length) {
+            return tramp(cont, forced);
+        }
+        return force(vals[i], function(s) {
+            forced.push(s);
+            return do_vals(i + 1);
+        }, econt);
+    }
+    return do_vals(0);
+}
+
 // Convert a value, that may be an IValue or already a JS value, to
 // the corresponding JS value.
 IValue.to_js = function (val) {
@@ -595,15 +609,12 @@ ICons.range = function (from, to) {
 ICons.prototype.im_concat = continuate(function(args, env) {
     function inner(lseq, lrest) {
         return new ILazy(function(cont, econt) {
-            console.log({SEQ: lseq});
             return force(lseq, function(seq) {
                 seq = seq.toSequence();
                 if (seq === inil) {
-                    console.log({NIL: lrest});
                     return forced(lrest, 'im_concat', args, env, cont, econt);
                 }
                 else {
-                    console.log({CONS: seq});
                     return tramp(cont, new ICons(seq.head, inner(seq.tail, lrest)));
                 }
             }, econt);
@@ -947,6 +958,14 @@ var evaluate_type = {
         }
 
         return do_decls(0);
+    },
+
+    StringPattern: function (node, env, cont, econt) {
+        return env.evaluateArgs(node.elements, function(args) {
+            return forceAll(args, function(vals) {
+                return tramp(cont, vals.map(String).join(''));
+            }, econt);
+        }, econt);
     },
 
     FunctionCall: function (node, env, cont, econt) {

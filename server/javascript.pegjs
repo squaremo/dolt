@@ -45,6 +45,8 @@
  * grammar correctly.
  */
 
+{ var PARSER = this; }
+
 start
   = __ program:Program __ { return program; }
 
@@ -188,6 +190,7 @@ Literal
         value: value
       };
     }
+  / StringPattern
   / RegularExpressionLiteral
 
 NullLiteral
@@ -246,9 +249,44 @@ HexDigit
   = [0-9a-fA-F]
 
 StringLiteral "string"
-  = parts:('"' DoubleStringCharacters? '"' / "'" SingleStringCharacters? "'") {
+  = parts:("'" SingleStringCharacters? "'") {
       return parts[1];
     }
+
+StringPattern
+  = '"' elements:(Pattern / NonPattern)* '"' {
+      return {
+        type: "StringPattern",
+        elements: elements 
+      };
+    }
+
+Pattern
+  = '{' chars:PatternChar* '}' {
+      return PARSER.parse(chars.join(''), 'Expression');
+    }
+
+PatternChar
+  = !('"' / "\\" / LineTerminator / "}") char_:SourceCharacter {
+       return char_;
+     }
+  / "\\" sequence:EscapeSequence { return sequence; }
+  / LineContinuation
+
+NonPattern
+  = chars:NonPatternChar+ {
+      return {
+        type: 'StringLiteral',
+        value: chars.join('')
+      };
+    }
+
+NonPatternChar
+  = !('"' / "\\" / LineTerminator / "{") char_:SourceCharacter {
+      return char_;
+    }
+  / "\\" sequence:EscapeSequence { return sequence; }
+  / LineContinuation
 
 DoubleStringCharacters
   = chars:DoubleStringCharacter+ { return chars.join(""); }
