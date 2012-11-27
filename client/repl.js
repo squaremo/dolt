@@ -49,7 +49,7 @@ var TableControl = (function() {
 
     function View(data) {
         this.cols = data.columns.map(function(name) { return {key: name}; });
-        this.rows = data.rows;
+        this.rows = data.data;
     }
 
     View.prototype.install = function (container) {
@@ -325,12 +325,23 @@ var TreeControl = (function () {
         return JSON.stringify(obj).length < 30;
     }
 
+    // Decode keys that were encoded to differentiate them from the
+    // magic '!' type property.
+    var decode_property_name_re = /^!+$/;
+
+    function decodeKey(k) {
+        if (decode_property_name_re.test(k))
+            return k.substring(1);
+        else
+            return k;
+    }
+
     function printCompact(obj, t) {
         var outer = $((t === 'array') ? '<ol/>' : '<ul/>').addClass(t);
         for (var k in obj) {
             outer.append($('<li/>').addClass('item')
                          .append($('<span/>').addClass('key')
-                                   .text(JSON.stringify(k)),
+                                   .text(JSON.stringify(decodeKey(k))),
                                  $('<span/>').addClass('value')
                                    .append(printValue(obj[k]))))
         }
@@ -342,15 +353,11 @@ var TreeControl = (function () {
         for (var k in obj) {
             outer.append($('<tr/>').addClass('item')
                          .append($('<td/>') .addClass('key')
-                                   .text(JSON.stringify(k)),
+                                   .text(JSON.stringify(decodeKey(k))),
                                  $('<td/>').addClass('value')
                                    .append(printValue(obj[k]))))
         }
         return outer;
-    }
-
-    function printArray(arr) {
-        return printObject(arr, 'array');
     }
 
     return {
@@ -397,7 +404,12 @@ $(function() {
             var vardiv = $('<var class="resultvar"/>').text(response.variable);
             var valdiv = $('<div class="resultval"/>');
             resdiv.append(vardiv).append(valdiv);
-            TreeControl.install(valdiv, response.result);
+
+            var type = response.result['!'];
+            if (type === 'table')
+                TableControl.install(valdiv, response.result);
+            else
+                TreeControl.install(valdiv, response.result);
         }
         else {
             output.append($('<span/>').text("Error: " + response.error));

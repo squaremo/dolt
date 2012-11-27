@@ -256,6 +256,19 @@ IValue.to_js = function (val) {
         return val;
 };
 
+// Encode a value to the JSON data to be sent to the client
+//
+// The encoding for IValues corresponding to JS types is mostly
+// straightforward.  Types that the client should present specially
+// are encoded as JSON objects with a '!' property indicating the
+// type.  Because of this, we need to encode IObject property names
+// that might clash.  This is done by adding an extra '!' char to an
+// property name consisting of only '!' chars.
+
+IValue.renderJSON = function (val, cont, econt) {
+    return IValue.from_js(val).renderJSON(cont, econt);
+};
+
 // Invoke an interpreter function with JS arguments
 function invoke(fun, args, cont, econt) {
     return force(fun, function (fun) {
@@ -365,7 +378,7 @@ IObject.prototype.toString = function () {
     return util.inspect(this.obj);
 };
 
-IValue.prototype.toJSValue = function () {
+IObject.prototype.toJSValue = function () {
     return this.obj;
 };
 
@@ -390,6 +403,36 @@ IObject.prototype.invokeMethod = function (name, args, env, cont, econt) {
     // Otherwise interpret method invocations as property accesses
     var prop = this.obj.hasOwnProperty(name) ? this.obj[name] : iundefined;
     return forced(prop, 'invoke', args, env, cont, econt);
+};
+
+IObject.encode_property_name_re = /^!+$/;
+
+IObject.prototype.renderJSON = function (cont, econt) {
+    var obj = this.obj;
+    var res = {};
+    var props = [];
+
+    // First we need to collect the property keys so that we can
+    // iterate over them below
+    for (var p in obj)
+        if (obj.hasOwnProperty(p))
+            props.push(p);
+
+    function do_props(i) {
+        if (i == props.length)
+            return tramp(cont, res);
+
+        return IValue.renderJSON(obj[props[i]], function (json) {
+            var enc_prop = props[i];
+            if (IObject.encode_property_name_re.test(enc_prop))
+                enc_prop = '!' + enc_prop;
+
+            res[enc_prop] = json;
+            return do_props(i + 1);
+        }, econt);
+    }
+
+    return do_props(0);
 };
 
 
@@ -475,10 +518,7 @@ ILazy.error = function (cont, econt) {
 
 ILazy.prototype.renderJSON = function (cont, econt) {
     return this.force(function (val) {
-        if (val instanceof IValue)
-            return val.renderJSON(cont, econt);
-        else
-            return tramp(cont, val);
+        return IValue.renderJSON(val, cont, econt);
     }, econt);
 };
 
@@ -508,7 +548,9 @@ ICons.prototype.toString = function () {
 };
 
 ICons.prototype.renderJSON = function (cont, econt) {
-    return this.im_toArray([], null, cont, econt);
+    return this.im_toArray([], null, function (arr) {
+        return new IArray(arr).renderJSON(cont, cont);
+    }, econt);
 };
 
 ICons.prototype.toSequence = function () {
@@ -545,7 +587,7 @@ ICons.range = function (from, to) {
     else
         return new ILazy(function (cont, econt) {
             return tramp(cont,
-                       new ICons(from, ICons.range(from + 1, to, cont, econt)));
+                         new ICons(from, ICons.range(from + 1, to, cont, econt)));
         });
 };
 
@@ -613,6 +655,7 @@ ICons.prototype.im_filter = continuate(function(args, env) {
     });
 });
 
+
 // Arrays
 
 var IArray = itype('array', IObject, function (obj) {
@@ -653,6 +696,51 @@ IArray.prototype.im_toArray = continuate(function (args, env) {
     return this.obj;
 });
 
+IArray.prototype.renderJSON = function (cont, econt) {
+    var arr = this.obj;
+    var res = [];
+
+    function do_elems(i) {
+        if (i === arr.length)
+            return tramp(cont, res);
+
+        return IValue.renderJSON(arr[i], function (json) {
+            res.push(json);
+            return do_elems(i + 1);
+        }, econt);
+    }
+
+    return do_elems(0);
+};
+
+
+// A Table type
+
+var ITable = itype('table', IValue, function (data, columns) {
+    this.data = data;
+    this.columns = columns;
+});
+
+ITable.prototype.getProperty = continuate(function (key) {
+    if (this.hasOwnProperty(key))
+        return this.key;
+    else
+        return iundefined;
+});
+
+ITable.prototype.renderJSON = function (cont, econt) {
+    var self = this;
+    return IValue.renderJSON(self.data, function (data) {
+        return IValue.renderJSON(self.columns, function (columns) {
+            return tramp(cont, {
+                '!': 'table',
+                data: data,
+                columns: columns
+            });
+        });
+    });
+};
+
 
 // Environments
 
@@ -677,7 +765,7 @@ Environment.prototype.run = function (p, cont, econt, dump_parse) {
 
 Environment.prototype.runForJSON = function (p, cont, econt, dump_parse) {
     this.run(p, function (res) {
-        oline(IValue.from_js(res).renderJSON(function (json) {
+        oline(IValue.renderJSON(res, function (json) {
             cont(res, json);
         }, econt));
     }, econt, dump_parse);
@@ -1046,6 +1134,10 @@ builtins.bind('lazy', deferred_builtin(function (args, env, cont, econt) {
     return tramp(cont, new ILazy(function (cont2, econt2) {
         return env.evaluateForced(args[0], cont2, econt2);
     }));
+}));
+
+builtins.bind('table', builtin(function (data, cols) {
+    return new ITable(data, cols);
 }));
 
 function run(p) {

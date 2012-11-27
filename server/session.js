@@ -8,8 +8,6 @@ var fs = promisify.object({
     writeFile: promisify.cb_func(),
     readFile: promisify.cb_func()
 })(require('fs'));
-var Table = require('./tables');
-var isTable = Table.isTable;
 var interp = require('./interp');
 
 // The environment exposed to evaluated expressions.  We'll leave
@@ -18,7 +16,6 @@ var interp = require('./interp');
 var builtins = {
     get: interp.promised_builtin(misc.get),
     post: interp.promised_builtin(misc.post)
-    //table: Table.table
 };
 
 function Session() {
