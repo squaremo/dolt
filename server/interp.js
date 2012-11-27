@@ -1075,33 +1075,47 @@ var evaluate_type = {
         var yieldExpr = node.yield;
         var guardExpr = node.guard;
         var loopVar = node.name;
-        return env.evaluate(generateExpr, function(seq) {
-            if (guardExpr) {
+
+        function do_map(seq) {
+            return forced(seq, 'im_map', [yieldExpr, loopVar],
+                          env, cont, econt);
+        }
+
+        var seqFn;
+        if (guardExpr) {
+            seqFn = function(seq) {
                 return forced(seq, 'im_filter', [guardExpr, loopVar],
-                              env, function(filtered) {
-                                  return forced(filtered, 'im_map',
-                                                [yieldExpr, loopVar], env, cont, econt);
-                              }, econt);
-            }
-            else {
-                return forced(seq, 'im_map', [yieldExpr, loopVar],
-                              env, cont, econt);
-            }
-        }, econt);
+                              env, do_map, econt);
+            };
+        }
+        else seqFn = do_map;
+
+        return env.evaluate(generateExpr, seqFn, cont, econt);
     },
     
     ComprehensionConcatMapExpression: function(node, env, cont, econt) {
         var generateExpr = node.generate;
         var yieldExpr = node.yield;
         var loopVar = node.name;
-        return env.evaluate(generateExpr, function(seq) {
+        var guardExpr = node.guard;
+
+        function do_concatmap(seq) {
             return forced(seq, 'im_map', [yieldExpr, loopVar],
                           env, function(seqOfSeqs) {
                               return forced(
                                   seqOfSeqs, 'im_concat',
                                   [], env, cont, econt);
                           }, econt);
-        }, econt);
+        }
+        var seqFn;
+        if (guardExpr) {
+            seqFn = function(seq) {
+                return forced(seq, 'im_filter', [guardExpr, loopVar],
+                              env, do_concatmap, econt);
+            };
+        }
+
+        return env.evaluate(generateExpr, seqFn, cont, econt);
     },
 };
 

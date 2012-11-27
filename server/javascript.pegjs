@@ -549,23 +549,23 @@ Elision
 
 ComprehensionExpression
   = yield:Expression _ ForToken name:(_ Identifier _ InToken)?
-    _ generate:Expression tail:(__ ';' __ Identifier _ InToken _
-  Expression)* guard:(_ IfToken _ Expression)?
+    _ generate:Expression guard:(_ IfToken _ Expression)?
+    tail:(__ ';' __ (Identifier _ InToken _)?
+          Expression (_ IfToken _ Expression)?)*
     {
       name = (name !== "") ? name[1] : false;
-      guard = (guard !== "") ? guard[3] : false;
       var expr = yield;
-      tail.unshift([,,,name,,,,generate]);
+      tail.unshift([,,,name,generate,guard]);
 
       for (var i=tail.length-1; i >= 0; i--) {
         expr = {
           yield: expr,
-          name: tail[i][3],
-          generate: tail[i][7]
+          guard: tail[i][5] && tail[i][5][3] || false,
+          name: tail[i][3] && tail[i][3][0] || false,
+          generate: tail[i][4]
         }
         if (i==tail.length-1) {
           expr.type = 'ComprehensionMapExpression';
-          expr.guard = guard;
         }
         else {
           expr.type = 'ComprehensionConcatMapExpression';
