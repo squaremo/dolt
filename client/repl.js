@@ -398,18 +398,20 @@ $(function() {
         output.empty();
 
         if (response.hasOwnProperty('result')) {
-            var resdiv = $('<div/>').addClass('result');
-            output.append(resdiv);
-
-            var vardiv = $('<var class="resultvar"/>').text(response.variable);
-            var valdiv = $('<div class="resultval"/>');
-            resdiv.append(vardiv).append(valdiv);
-
             var type = response.result['!'];
-            if (type === 'table')
-                TableControl.install(valdiv, response.result);
-            else
-                TreeControl.install(valdiv, response.result);
+            if (type !== 'undefined') {
+                var resdiv = $('<div/>').addClass('result');
+                output.append(resdiv);
+
+                var vardiv = $('<var class="resultvar"/>').text(response.variable);
+                var valdiv = $('<div class="resultval"/>');
+                resdiv.append(vardiv).append(valdiv);
+
+                if (type === 'table')
+                    TableControl.install(valdiv, response.result);
+                else
+                    TreeControl.install(valdiv, response.result);
+            }
         }
         else {
             output.append($('<span/>').text("Error: " + response.error));

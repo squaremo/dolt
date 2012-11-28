@@ -32,7 +32,12 @@ module.exports.katch
 module.exports.objConstructorShortcut
     = check('var foo = 1; ({foo})', {foo: 1});
 
+module.exports.vardecl
+    = check('var x = 100', {'!':'undefined'});
+
 // sequences
+
+// range
 
 module.exports.range = check('range(0,5)', [0,1,2,3,4]);
 module.exports.rangeLazy = check('range(42,1000000)[0]', 42);

@@ -124,6 +124,7 @@ var iundefined = singleton_itype('undefined', {
     truthy: continuate(function () { return false; }),
     toString: function () { return 'undefined'; },
     toJSValue: function () { return undefined; },
+    renderJSON: continuate(function () { return {'!': 'undefined'}; }),
 });
 
 // booleans
