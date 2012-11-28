@@ -86,13 +86,16 @@ IValue.prototype.setProperty = function (key, val, cont, econt) {
     return tramp(econt, new Error(this.typename + ' is not an object'));
 };
 
+// In general, use this rather than calling im_ methods directly,
+// because it handles missing methods gracefully.
 IValue.prototype.invokeMethod = function (name, args, env, cont, econt) {
     // If there is a method, call it
     var m = this['im_' + name];
     if (m)
         return m.call(this, args, env, cont, econt);
     else
-        return tramp(econt, new Error('no method "' + name + '"'));
+        return tramp(econt, new Error(this.typename
+                                      + ' has no method "' + name + '"'));
 };
 
 IValue.prototype.renderJSON = function (cont, econt) {
@@ -649,7 +652,7 @@ ICons.prototype.im_map = continuate(function (args, env) {
     var self = this;
     return new ILazySeq(function (cont, econt) {
         return apply_defarg(args[0], args[1], env, self.head, function (head) {
-            return self.tail.im_map(args, env, function (tail) {
+            return self.tail.invokeMethod('map', args, env, function (tail) {
                 return tramp(cont, new ICons(head, tail));
             }, econt);
         }, econt);
@@ -661,7 +664,8 @@ ICons.prototype.im_filter = continuate(function(args, env) {
     return new ILazySeq(function (cont, econt) {
         return apply_defarg(args[0], args[1], env, self.head, function (pass) {
             return IValue.from_js(pass).truthy(function (pass) {
-                return self.tail.im_filter(args, env, function (next) {
+                return self.tail.invokeMethod('filter', args, env,
+                                              function (next) {
                     if (pass)
                         next = new ICons(self.head, next);
                     return tramp(cont, next);
@@ -682,7 +686,7 @@ ICons.prototype.im_concat = continuate(function (args, env) {
         return force(self.head, function (head) {
             head = head.toSequence();
             if (head === inil)
-                return self.tail.im_concat(args, env, cont, econt);
+                return self.tail.invokeMethod('concat', args, env, cont, econt);
 
             return new ICons(head.tail, self.tail).im_concat(args, env,
                           function (tail) {
@@ -933,14 +937,15 @@ function evaluate_comprehension(node, env, cont, econt) {
         seq = IValue.from_js(seq);
 
         function do_map(seq) {
-            return seq.im_map([node.yield, node.name], env, cont, econt);
+            return seq.invokeMethod('map', [node.yield, node.name], env, cont,
+                                    econt);
         }
 
         if (!node.guard)
             return do_map(seq);
         else
-            return seq.im_filter([node.guard, node.name], env,
-                                 do_map, econt);
+            return seq.invokeMethod('filter', [node.guard, node.name], env,
+                                    do_map, econt);
     }, econt);
 }
 
@@ -1121,7 +1126,7 @@ var evaluate_type = {
     ComprehensionMapExpression: evaluate_comprehension,
     ComprehensionConcatMapExpression: function(node, env, cont, econt) {
         return evaluate_comprehension(node, env, function (res) {
-            return res.im_concat([], env, cont, econt);
+            return res.invokeMethod('concat', [], env, cont, econt);
         }, econt);
     },
 };
