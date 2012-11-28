@@ -632,26 +632,45 @@ ICons.prototype.im_toArray = function (args, env, cont, econt) {
                            econt);
 };
 
-function apply_defarg(defarg, loopvar, env, elem, cont, econt) {
+function apply_deferred_arg(defarg, env, elem, cont, econt) {
+    var varname;
+    var body;
     var subenv = env;
 
-    // If the element is an object, turn it into a frame in the
-    // environment
-    if (typeof(elem) === 'object')
-        subenv = new Environment(subenv, elem);
+    switch (defarg.length) {
+    case 1:
+        varname = '_';
+        body = defarg[0];
 
-    // And bind the element as loopvar (or '_' if not supplied)
-    loopvar = loopvar || '_';
+        // If the element is an object, turn it into a frame in the
+        // environment
+        if (typeof(elem) === 'object')
+            subenv = new Environment(subenv, elem);
+
+        break;
+
+    case 2:
+        if (defarg[0].type !== 'Variable')
+            return tramp(econt, new Error('expected variable, got '
+                                          + defarg[0].type));
+
+        varname = defarg[0].name;
+        body = defarg[1];
+        break;
+
+    case 3:
+        return tramp(econt, new Error('deferred argument looks strange'));
+    }
+
     subenv = new Environment(subenv);
-    subenv.bind(loopvar, elem);
-
-    return subenv.evaluate(defarg, cont, econt);
+    subenv.bind(varname, elem);
+    return subenv.evaluate(body, cont, econt);
 }
 
 ICons.prototype.im_map = continuate(function (args, env) {
     var self = this;
     return new ILazySeq(function (cont, econt) {
-        return apply_defarg(args[0], args[1], env, self.head, function (head) {
+        return apply_deferred_arg(args, env, self.head, function (head) {
             return self.tail.invokeMethod('map', args, env, function (tail) {
                 return tramp(cont, new ICons(head, tail));
             }, econt);
@@ -662,7 +681,7 @@ ICons.prototype.im_map = continuate(function (args, env) {
 ICons.prototype.im_filter = continuate(function(args, env) {
     var self = this;
     return new ILazySeq(function (cont, econt) {
-        return apply_defarg(args[0], args[1], env, self.head, function (pass) {
+        return apply_deferred_arg(args, env, self.head, function (pass) {
             return IValue.from_js(pass).truthy(function (pass) {
                 return self.tail.invokeMethod('filter', args, env,
                                               function (next) {
@@ -932,20 +951,24 @@ function evaluate_literal(node, env, cont, econt) {
 }
 
 function evaluate_comprehension(node, env, cont, econt) {
+    var varnode = []
+    if (node.name)
+        varnode.push({ type: 'Variable', name: node.name });
+
     return env.evaluate(node.generate, function (seq) {
         // we don't want to force seq, but we do need to handle
         // the case where it is a JS array.
         seq = IValue.from_js(seq);
 
         function do_map(seq) {
-            return seq.invokeMethod('map', [node.yield, node.name], env, cont,
-                                    econt);
+            return seq.invokeMethod('map', varnode.concat(node.yield), env,
+                                    cont, econt);
         }
 
         if (!node.guard)
             return do_map(seq);
         else
-            return seq.invokeMethod('filter', [node.guard, node.name], env,
+            return seq.invokeMethod('filter', varnode.concat(node.guard), env,
                                     do_map, econt);
     }, econt);
 }
