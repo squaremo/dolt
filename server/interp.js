@@ -235,14 +235,6 @@ function force(val, cont, econt) {
     }
 }
 
-// Force a value then call a method on the resulting IValue.
-function forced(val, method /* ..., cont, econt */) {
-    var args = Array.prototype.slice.call(arguments, 2)
-    return force(val, function (val) {
-        return val[method].apply(val, args);
-    }, arguments[arguments.length-1]);
-}
-
 function forceAll(vals, cont, econt) {
     var forced = [];
     function do_vals(i) {
@@ -420,7 +412,9 @@ IObject.prototype.invokeMethod = function (name, args, env, cont, econt) {
 
     // Otherwise interpret method invocations as property accesses
     var prop = this.obj.hasOwnProperty(name) ? this.obj[name] : iundefined;
-    return forced(prop, 'invoke', args, env, cont, econt);
+    return force(prop, function (val) {
+        return val.invoke(args, env, cont, econt);
+    }, econt);
 };
 
 IObject.encode_property_name_re = /^!+$/;
