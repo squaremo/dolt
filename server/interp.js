@@ -1090,7 +1090,7 @@ var evaluate_type = {
                     return lval.set(val, function () {
                         return tramp(cont, val);
                     }, econt);
-                });
+                }, econt);
             }
             else {
                 // Force the left side before we evaluate the right side.
@@ -1217,18 +1217,8 @@ function run(p) {
 }
 
 //builtins.bind('print', builtin(function (x) { console.log(x); }));
-//run("print(1+42)");
-//run("function foo(x) { print(x+1); } foo(42);");
 //run("print(callcc(function (c) { c('Hello'); }))");
 //run("var x; callcc(function (c) { x = c; }); print('Hello'); x();");
-//run("function intsFrom(n) { lazy({head: n, tail: intsFrom(n+1)}); } intsFrom(0).tail.tail.head");
-//run("try { (function (n) { var x = n+1; print(x); throw 'bang'; 42; })(69); } catch (e) { print('oops: ' + e); 69; }");
-
-//run("range(1,4).map(_*2).toArray()");
-//run("[1,2,3].map(_*2).toArray()");
-//run("[1,2,3].toArray()");
-
-//['dpw','squaremo'].map(get('https://api.github.com/users/'+_))
 
 module.exports.Environment = Environment;
 module.exports.builtins = builtins;
