@@ -564,7 +564,7 @@ var ILazySeq = itype('lazy sequence', ILazy, function (producer) {
 });
 
 ILazy.forcingMethods(ILazySeq, 'getProperty', 'addToArray');
-ILazy.lazyMethods(ILazySeq, 'im_map', 'im_filter', 'im_concat');
+ILazy.lazyMethods(ILazySeq, 'im_map', 'im_where', 'im_concat');
 
 ILazySeq.range = function (from, to) {
     from = IValue.to_js(from);
@@ -588,7 +588,7 @@ var inil = singleton_itype('nil', {
 
     im_map: continuate(function (args, env) { return inil; }),
     im_concat: continuate(function(args, env) { return inil; }),
-    im_filter: continuate(function(args, env) { return inil; }),
+    im_where: continuate(function(args, env) { return inil; }),
     im_toArray: continuate(function (args, env) { return []; }),
 });
 
@@ -678,12 +678,12 @@ ICons.prototype.im_map = continuate(function (args, env) {
     });
 });
 
-ICons.prototype.im_filter = continuate(function(args, env) {
+ICons.prototype.im_where = continuate(function(args, env) {
     var self = this;
     return new ILazySeq(function (cont, econt) {
         return apply_deferred_arg(args, env, self.head, function (pass) {
             return IValue.from_js(pass).truthy(function (pass) {
-                return self.tail.invokeMethod('filter', args, env,
+                return self.tail.invokeMethod('where', args, env,
                                               function (next) {
                     if (pass)
                         next = new ICons(self.head, next);
@@ -740,8 +740,8 @@ IArray.prototype.im_map = function (args, env, cont, econt) {
     return this.toSequence().im_map(args, env, cont, econt);
 };
 
-IArray.prototype.im_filter = function (args, env, cont, econt) {
-    return this.toSequence().im_filter(args, env, cont, econt);
+IArray.prototype.im_where = function (args, env, cont, econt) {
+    return this.toSequence().im_where(args, env, cont, econt);
 };
 
 IArray.prototype.im_concat = function (args, env, cont, econt) {
@@ -968,7 +968,7 @@ function evaluate_comprehension(node, env, cont, econt) {
         if (!node.guard)
             return do_map(seq);
         else
-            return seq.invokeMethod('filter', varnode.concat(node.guard), env,
+            return seq.invokeMethod('where', varnode.concat(node.guard), env,
                                     do_map, econt);
     }, econt);
 }
