@@ -53,9 +53,7 @@ function continuate(fun) {
 
 function IValue() {}
 
-IValue.prototype.truthy = function () {
-    return true;
-};
+IValue.prototype.truthy = continuate(function () { return true; });
 
 IValue.prototype.toNumber = function () {
     throw new Error(this.typename + ' is not a number');
@@ -120,7 +118,7 @@ function singleton_itype(name, props) {
 // undefined
 
 var iundefined = singleton_itype('undefined', {
-    truthy: function () { return false; },
+    truthy: continuate(function () { return false; }),
     toString: function () { return 'undefined'; },
     toJSValue: function () { return undefined; },
 });
@@ -131,7 +129,7 @@ var IBoolean = itype('boolean', IValue, function (value) {
     this.value = value;
 });
 
-IBoolean.prototype.truthy = function() { return this.value; };
+IBoolean.prototype.truthy = continuate(function() { return this.value; });
 IBoolean.prototype.toString = function() {return String(this.value);};
 IBoolean.prototype.toJSValue = function() { return this.value; };
 
@@ -141,9 +139,7 @@ var INumber = itype('number', IValue, function (value) {
     this.value = value;
 });
 
-INumber.prototype.truthy = function () {
-    return this.value != 0;
-};
+INumber.prototype.truthy = continuate(function () { return this.value != 0; });
 
 INumber.prototype.toNumber = function () {
     return this.value;
@@ -179,9 +175,9 @@ var IString = itype('string', IValue, function (value) {
     this.value = value;
 });
 
-IString.prototype.truthy = function () {
+IString.prototype.truthy = continuate(function () {
     return this.value.length != 0;
-};
+});
 
 IString.prototype.toString = function () {
     return this.value;
@@ -278,7 +274,6 @@ IValue.to_js = function (val) {
 // type.  Because of this, we need to encode IObject property names
 // that might clash.  This is done by adding an extra '!' char to an
 // property name consisting of only '!' chars.
-
 IValue.renderJSON = function (val, cont, econt) {
     return IValue.from_js(val).renderJSON(cont, econt);
 };
@@ -388,6 +383,15 @@ var IObject = itype('object', IValue, function (obj) {
     this.obj = obj;
 });
 
+IObject.prototype.truthy = continuate(function () {
+    for (var p in this.obj) {
+        if (this.obj.hasOwnProperty(p))
+            return true;
+    }
+
+    return false;
+});
+
 IObject.prototype.toString = function () {
     return util.inspect(this.obj);
 };
@@ -455,6 +459,25 @@ IObject.prototype.renderJSON = function (cont, econt) {
 var ILazy = itype('lazy', IValue, function (producer) {
     this.producer = producer;
 });
+
+// Declare some forcing methods (i.e. methods that force the ILazy and
+// then call the same method on the resulting object) on ILazy or a
+// subclass.
+ILazy.forcingMethods = function (constr /* , names ... */) {
+    function forcingMethod(name) {
+        constr.prototype[name] = function (/* ..., cont, econt */) {
+            var args = arguments;
+            return this.force(function (val) {
+                return val[name].apply(val, args);
+            }, args[args.length - 1]);
+        };
+    }
+
+    for (var i = 1; i < arguments.length; i++)
+        forcingMethod(arguments[i]);
+};
+
+ILazy.forcingMethods(ILazy, 'truthy', 'renderJSON');
 
 ILazy.prototype.toString = function () {
     if (this.producer)
@@ -530,16 +553,10 @@ ILazy.error = function (cont, econt) {
     return tramp(econt, this.error);
 };
 
-ILazy.prototype.renderJSON = function (cont, econt) {
-    return this.force(function (val) {
-        return IValue.renderJSON(val, cont, econt);
-    }, econt);
-};
-
 // Sequences
 
 var inil = singleton_itype('nil', {
-    truthy: function () { return false; },
+    truthy: continuate(function () { return false; }),
     toString: function () { return '[]'; },
     getProperty: continuate(function (key) { return iundefined; }),
     addToArray: continuate(function (arr) {}),
@@ -655,13 +672,15 @@ ICons.prototype.im_map = continuate(function (args, env) {
 ICons.prototype.im_filter = continuate(function(args, env) {
     var self = this, fn = args[0], name = args[1];
     return new ILazy(function (cont, econt) {
-        return apply_defarg(fn, name, env, self.head, function(pass) {
-            return forced(
-                self.tail, 'im_filter', args, env,
-                function(tail) {
-                    return tramp(
-                        cont, (pass) ? new ICons(self.head, tail) : tail);
-                }, econt);
+        return apply_defarg(fn, name, env, self.head, function (pass) {
+            return IValue.from_js(pass).truthy(function (pass) {
+                return forced(self.tail, 'im_filter', args, env,
+                              function(next) {
+                                  if (pass)
+                                      next = new ICons(self.head, next);
+                                  return tramp(cont, next);
+                              }, econt);
+            }, econt);
         }, econt);
     });
 });
