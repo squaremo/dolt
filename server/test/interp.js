@@ -5,7 +5,8 @@ var interp = require('../interp');
 function check(expr, expect) {
     return function (assert) {
         assert.expect(1);
-        interp.builtins.runForJSON(expr, function (res, json) {
+        var env = new interp.Environment(interp.builtins);
+        env.runForJSON(expr, function (res, json) {
             assert.deepEqual(json, expect);
             assert.done();
         }, function (err) {
