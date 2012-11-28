@@ -681,19 +681,20 @@ ICons.prototype.im_filter = continuate(function(args, env) {
 // concat []:t = concat t
 // concat [h:t1]:t2 = h:(concat [t1]:t2)
 ICons.prototype.im_concat = continuate(function (args, env) {
-    var self = this;
-    return new ILazySeq(function (cont, econt) {
-        return force(self.head, function (head) {
-            head = head.toSequence();
-            if (head === inil)
-                return self.tail.invokeMethod('concat', args, env, cont, econt);
+    function concat(head, tail) {
+        return new ILazySeq(function (cont, econt) {
+            return force(head, function (head) {
+                head = head.toSequence();
+                if (head === inil)
+                    return tail.invokeMethod('concat', args, env, cont, econt);
 
-            return new ICons(head.tail, self.tail).im_concat(args, env,
-                          function (tail) {
-                              return tramp(cont, new ICons(head.head, tail));
-                          }, econt);
-        }, econt);
-    });
+                return tramp(cont,
+                             new ICons(head.head, concat(head.tail, tail)));
+            }, econt);
+        });
+    }
+
+    return concat(this.head, this.tail);
 });
 
 
