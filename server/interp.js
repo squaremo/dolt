@@ -1036,7 +1036,7 @@ var evaluate_type = {
             if (i === elems.length)
                 return tramp(cont, pieces.join(''));
 
-            return env.evaluateForced(elems[i], env, function (piece) {
+            return env.evaluateForced(elems[i], function (piece) {
                 pieces.push(String(piece));
                 return do_piece(i + 1);
             }, econt);
