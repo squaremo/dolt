@@ -92,7 +92,7 @@ IValue.prototype.invokeMethod = function (name, args, env, cont, econt) {
     if (m)
         return m.call(this, args, env, cont, econt);
     else
-        tramp(econt, new Error('no method "' + name + '"'));
+        return tramp(econt, new Error('no method "' + name + '"'));
 };
 
 IValue.prototype.renderJSON = function (cont, econt) {
