@@ -235,20 +235,6 @@ function force(val, cont, econt) {
     }
 }
 
-function forceAll(vals, cont, econt) {
-    var forced = [];
-    function do_vals(i) {
-        if (i == vals.length) {
-            return tramp(cont, forced);
-        }
-        return force(vals[i], function(s) {
-            forced.push(s);
-            return do_vals(i + 1);
-        }, econt);
-    }
-    return do_vals(0);
-}
-
 // Convert a value, that may be an IValue or already a JS value, to
 // the corresponding JS value.
 IValue.to_js = function (val) {
@@ -1014,11 +1000,20 @@ var evaluate_type = {
     },
 
     StringPattern: function (node, env, cont, econt) {
-        return env.evaluateArgs(node.elements, function(args) {
-            return forceAll(args, function(vals) {
-                return tramp(cont, vals.map(String).join(''));
+        var elems = node.elements;
+        var pieces = [];
+
+        function do_piece(i) {
+            if (i === elems.length)
+                return tramp(cont, pieces.join(''));
+
+            return env.evaluateForced(elems[i], env, function (piece) {
+                pieces.push(String(piece));
+                return do_piece(i + 1);
             }, econt);
-        }, econt);
+        }
+
+        return do_piece(0);
     },
 
     FunctionCall: function (node, env, cont, econt) {
