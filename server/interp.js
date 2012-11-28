@@ -563,7 +563,7 @@ ICons.prototype.toString = function () {
 
 ICons.prototype.renderJSON = function (cont, econt) {
     return this.im_toArray([], null, function (arr) {
-        return new IArray(arr).renderJSON(cont, cont);
+        return new IArray(arr).renderJSON(cont, econt);
     }, econt);
 };
 
