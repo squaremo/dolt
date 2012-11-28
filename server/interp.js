@@ -477,17 +477,38 @@ ILazy.forcingMethods = function (constr /* , names ... */) {
         forcingMethod(arguments[i]);
 };
 
+// Declare some lazy methods (i.e. methods that yield an ILazy that
+// when forced, force the underlying object in turn and invoke the
+// method on it).
+ILazy.lazyMethods = function (constr /* , names ... */) {
+    function lazyMethod(name) {
+        constr.prototype[name] = continuate(function (/* ... */) {
+            var orig_lazy = this;
+            var args = Array.prototype.slice.call(arguments);
+            return new constr(function (cont, econt) {
+                return orig_lazy.force(function (val) {
+                    args.push(cont, econt);
+                    return val[name].apply(val, args);
+                });
+            });
+        });
+    }
+
+    for (var i = 1; i < arguments.length; i++)
+        lazyMethod(arguments[i]);
+}
+
 ILazy.forcingMethods(ILazy, 'truthy', 'renderJSON');
 
 ILazy.prototype.toString = function () {
     if (this.producer)
-        return 'lazy(unforced)';
+        return this.typename + '(unforced)';
     else if ('value' in this)
-        return 'lazy(forced: ' + self.value + ')';
+        return this.typename + '(forced: ' + self.value + ')';
     else if ('error' in this)
-        return 'lazy(error: ' + self.error + ')';
+        return this.typename + '(error: ' + self.error + ')';
     else
-        return 'lazy(forcing)';
+        return this.typename + '(forcing)';
 };
 
 ILazy.prototype.force = function (cont, econt) {
@@ -555,6 +576,25 @@ ILazy.error = function (cont, econt) {
 
 // Sequences
 
+var ILazySeq = itype('lazy sequence', ILazy, function (producer) {
+    this.producer = producer;
+});
+
+ILazy.forcingMethods(ILazySeq, 'getProperty', 'addToArray');
+ILazy.lazyMethods(ILazySeq, 'im_map', 'im_filter', 'im_concat');
+
+ILazySeq.range = function (from, to) {
+    from = IValue.to_js(from);
+    to = IValue.to_js(to);
+
+    return new ILazySeq(continuate(function () {
+        if (from === to)
+            return inil;
+        else
+            return new ICons(from, ILazySeq.range(from + 1, to));
+    }));
+};
+
 var inil = singleton_itype('nil', {
     truthy: continuate(function () { return false; }),
     toString: function () { return '[]'; },
@@ -564,9 +604,9 @@ var inil = singleton_itype('nil', {
     toSequence: function() { return this; },
 
     im_map: continuate(function (args, env) { return inil; }),
-    im_concat: continuate(function() { return inil; }),
-    im_filter: continuate(function() { return inil; }),
-    im_toArray: continuate(function () { return []; }),
+    im_concat: continuate(function(args, env) { return inil; }),
+    im_filter: continuate(function(args, env) { return inil; }),
+    im_toArray: continuate(function (args, env) { return []; }),
 });
 
 var ICons = itype('cons', IValue, function (head, tail) {
@@ -593,14 +633,14 @@ ICons.prototype.getProperty = function (key, cont, econt) {
     if (key === 0)
         return tramp(cont, this.head);
     else if (typeof(key) === 'number')
-        return forced(this.tail, 'getProperty', key - 1, cont, econt);
+        return this.tail.getProperty(key - 1, cont, econt);
     else
         return tramp(cont, iundefined);
 };
 
 ICons.prototype.addToArray = function (arr, cont, econt) {
     arr.push(this.head);
-    return forced(this.tail, 'addToArray', arr, cont, econt);
+    return this.tail.addToArray(arr, cont, econt);
 };
 
 ICons.prototype.im_toArray = function (args, env, cont, econt) {
@@ -608,38 +648,6 @@ ICons.prototype.im_toArray = function (args, env, cont, econt) {
     return this.addToArray(res, function () { return tramp(cont, res); },
                            econt);
 };
-
-ICons.range = function (from, to) {
-    from = IValue.to_js(from);
-    to = IValue.to_js(to);
-
-    if (from === to)
-        return inil;
-    else
-        return new ILazy(function (cont, econt) {
-            return tramp(cont,
-                         new ICons(from, ICons.range(from + 1, to, cont, econt)));
-        });
-};
-
-// flatten a sequence of sequences
-ICons.prototype.im_concat = continuate(function(args, env) {
-    function inner(lseq, lrest) {
-        return new ILazy(function(cont, econt) {
-            return force(lseq, function(seq) {
-                seq = seq.toSequence();
-                if (seq === inil) {
-                    return forced(lrest, 'im_concat', args, env, cont, econt);
-                }
-                else {
-                    return tramp(cont, new ICons(seq.head, inner(seq.tail, lrest)));
-                }
-            }, econt);
-        });
-    }
-
-    return inner(this.head, this.tail);
-});
 
 function apply_defarg(defarg, loopvar, env, elem, cont, econt) {
     var subenv = env;
@@ -659,28 +667,47 @@ function apply_defarg(defarg, loopvar, env, elem, cont, econt) {
 
 ICons.prototype.im_map = continuate(function (args, env) {
     var self = this;
-    return new ILazy(function (cont, econt) {
+    return new ILazySeq(function (cont, econt) {
         return apply_defarg(args[0], args[1], env, self.head, function (head) {
-            return forced(self.tail, 'im_map', args, env,
-                          function (tail) {
-                              return tramp(cont, new ICons(head, tail));
-                          }, econt);
+            return self.tail.im_map(args, env, function (tail) {
+                return tramp(cont, new ICons(head, tail));
+            }, econt);
         }, econt);
     });
 });
 
 ICons.prototype.im_filter = continuate(function(args, env) {
-    var self = this, fn = args[0], name = args[1];
-    return new ILazy(function (cont, econt) {
-        return apply_defarg(fn, name, env, self.head, function (pass) {
+    var self = this;
+    return new ILazySeq(function (cont, econt) {
+        return apply_defarg(args[0], args[1], env, self.head, function (pass) {
             return IValue.from_js(pass).truthy(function (pass) {
-                return forced(self.tail, 'im_filter', args, env,
-                              function(next) {
-                                  if (pass)
-                                      next = new ICons(self.head, next);
-                                  return tramp(cont, next);
-                              }, econt);
+                return self.tail.im_filter(args, env, function (next) {
+                    if (pass)
+                        next = new ICons(self.head, next);
+                    return tramp(cont, next);
+                }, econt);
             }, econt);
+        }, econt);
+    });
+});
+
+// flatten a sequence of sequences
+//
+// concat [] = []
+// concat []:t = concat t
+// concat [h:t1]:t2 = h:(concat [t1]:t2)
+ICons.prototype.im_concat = continuate(function (args, env) {
+    var self = this;
+    return new ILazySeq(function (cont, econt) {
+        return force(self.head, function (head) {
+            head = head.toSequence();
+            if (head === inil)
+                return self.tail.im_concat(args, env, cont, econt);
+
+            return new ICons(head.tail, self.tail).im_concat(args, env,
+                          function (tail) {
+                              return tramp(cont, new ICons(head.head, tail));
+                          }, econt);
         }, econt);
     });
 });
@@ -699,27 +726,22 @@ IArray.prototype.toSequence = function () {
         if (i == arr.length)
             return inil;
         else
-            return new ICons(arr[i], new ILazy(function (cont, econt) {
-                return tramp(cont, sequence_from(i + 1, cont, econt));
-            }));
+            return new ICons(arr[i], sequence_from(i + 1));
     }
 
     return sequence_from(0);
 };
 
 IArray.prototype.im_map = function (args, env, cont, econt) {
-    var seq = this.toSequence();
-    return seq.im_map.call(seq, args, env, cont, econt);
-};
-
-IArray.prototype.im_concat = function (args, env, cont, econt) {
-    var seq = this.toSequence();
-    return seq.im_concat.call(seq, args, env, cont, econt);
+    return this.toSequence().im_map(args, env, cont, econt);
 };
 
 IArray.prototype.im_filter = function (args, env, cont, econt) {
-    var seq = this.toSequence();
-    return seq.im_filter.call(seq, args, env, cont, econt);
+    return this.toSequence().im_filter(args, env, cont, econt);
+};
+
+IArray.prototype.im_concat = function (args, env, cont, econt) {
+    return this.toSequence().im_concat(args, env, cont, econt);
 };
 
 IArray.prototype.im_toArray = continuate(function (args, env) {
@@ -920,14 +942,32 @@ binary_operators.forEach(function (op) {
     assignment_to_binary_op[op+'='] = op;
 });
 
-function literal(node, env, cont, econt) {
+function evaluate_literal(node, env, cont, econt) {
     return tramp(cont, node.value);
 }
 
+function evaluate_comprehension(node, env, cont, econt) {
+    return env.evaluate(node.generate, function (seq) {
+        // we don't want to force seq, but we do need to handle
+        // the case where it is a JS array.
+        seq = IValue.from_js(seq);
+
+        function do_map(seq) {
+            return seq.im_map([node.yield, node.name], env, cont, econt);
+        }
+
+        if (!node.guard)
+            return do_map(seq);
+        else
+            return seq.im_filter([node.guard, node.name], env,
+                                 do_map, econt);
+    }, econt);
+}
+
 var evaluate_type = {
-    Literal: literal,
-    NumericLiteral: literal,
-    StringLiteral: literal,
+    Literal: evaluate_literal,
+    NumericLiteral: evaluate_literal,
+    StringLiteral: evaluate_literal,
 
     EmptyStatement: function (node, env, cont, econt) {
         return tramp(cont, iundefined);
@@ -1089,52 +1129,11 @@ var evaluate_type = {
         return do_elems(0);
     },
 
-    ComprehensionMapExpression: function (node, env, cont, econt) {
-        var generateExpr = node.generate;
-        var yieldExpr = node.yield;
-        var guardExpr = node.guard;
-        var loopVar = node.name;
-
-        function do_map(seq) {
-            return forced(seq, 'im_map', [yieldExpr, loopVar],
-                          env, cont, econt);
-        }
-
-        var seqFn;
-        if (guardExpr) {
-            seqFn = function(seq) {
-                return forced(seq, 'im_filter', [guardExpr, loopVar],
-                              env, do_map, econt);
-            };
-        }
-        else seqFn = do_map;
-
-        return env.evaluate(generateExpr, seqFn, cont, econt);
-    },
-    
+    ComprehensionMapExpression: evaluate_comprehension,
     ComprehensionConcatMapExpression: function(node, env, cont, econt) {
-        var generateExpr = node.generate;
-        var yieldExpr = node.yield;
-        var loopVar = node.name;
-        var guardExpr = node.guard;
-
-        function do_concatmap(seq) {
-            return forced(seq, 'im_map', [yieldExpr, loopVar],
-                          env, function(seqOfSeqs) {
-                              return forced(
-                                  seqOfSeqs, 'im_concat',
-                                  [], env, cont, econt);
-                          }, econt);
-        }
-        var seqFn;
-        if (guardExpr) {
-            seqFn = function(seq) {
-                return forced(seq, 'im_filter', [guardExpr, loopVar],
-                              env, do_concatmap, econt);
-            };
-        }
-
-        return env.evaluate(generateExpr, seqFn, cont, econt);
+        return evaluate_comprehension(node, env, function (res) {
+            return res.im_concat([], env, cont, econt);
+        }, econt);
     },
 };
 
@@ -1168,7 +1167,7 @@ Environment.prototype.evaluate = function (node, cont, econt) {
 var builtins = new Environment();
 builtins.bind('nil', inil);
 builtins.bind('undefined', iundefined);
-builtins.bind('range', builtin(ICons.range));
+builtins.bind('range', builtin(ILazySeq.range));
 
 builtins.bind('callcc', strict_builtin(function (args, cont, econt) {
     // Wrap the original continuation in a callable function
