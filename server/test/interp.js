@@ -50,6 +50,12 @@ module.exports.arrayMapLazyForced
 module.exports.arrayMapLazyForcedHead
     = check('var total = 0; function see(n) { total += n; n; }; [1,2,3].map(see(_))[0]; total', 1);
 
+module.exports.arrayMapProperties
+    = check('[{foo:1},{foo:2}].map(foo*2)', [2,4]);
+
+module.exports.arrayMapExplicitVar
+    = check('[1,2,3].map(x,x*2)', [2,4,6]);
+
 // where
 
 module.exports.arrayWhere
@@ -67,3 +73,9 @@ module.exports.arrayWhereLazyForced
 // Here we force only the head of a lazy where
 module.exports.arrayWhereLazyForcedHead
     = check('var total = 0; function see(n) { total += n; 10 < n; }; [5,15,20,5].where(see(_))[0]; total;', 20);
+
+module.exports.arrayWhereProperties
+    = check('[{foo:5},{foo:15}].where(10 < foo)', [{foo:15}]);
+
+module.exports.arrayWhereExplicitVar
+    = check('[1,20,2,30,3,15].where(x,10<x)', [20,30,15]);
