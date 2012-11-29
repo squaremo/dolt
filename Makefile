@@ -7,7 +7,7 @@ parsers: node_modules/pegjs server/javascript.js
 server/javascript.js: server/javascript.pegjs
 	$(PEGJS) server/javascript.pegjs server/javascript.js
 
-test: node_modules/nodeunit
+test: node_modules/nodeunit parsers
 	node ./node_modules/nodeunit/bin/nodeunit server/test
 
 start-server: parsers
