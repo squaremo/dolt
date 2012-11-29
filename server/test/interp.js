@@ -29,6 +29,11 @@ module.exports.trivialFunCall
 module.exports.katch
     = check('var ex; try { ex = (function () { throw "bang"; 42; })(); } catch (e) { ex = e; } ex;', 'bang');
 
+module.exports.objConstructorShortcut
+    = check('var foo = 1; ({foo})', {foo: 1});
+
+// sequences
+
 module.exports.range = check('range(0,5)', [0,1,2,3,4]);
 module.exports.rangeLazy = check('range(42,1000000)[0]', 42);
 
@@ -114,3 +119,7 @@ module.exports.compNestedIf
 
 module.exports.compField
     = check('[foo for [{foo: 1}, {foo: 2}]]', [1,2]);
+
+module.exports.compObjectShortcut
+    = check('[{foo} for [{foo: 1, bar: 2}, {foo: 2, bar: 3}]]',
+            [{foo: 1}, {foo: 2}]);
