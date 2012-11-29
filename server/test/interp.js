@@ -133,10 +133,10 @@ module.exports.stringInterpolateTrivial
     = check('"Literal"', 'Literal');
 
 module.exports.stringInterpolateExpression
-    = check('"{1 + 2}"', 3);
+    = check('"{1 + 2}"', "3");
 
 module.exports.stringInterpolateVar
-    = check('var n = 4; "{n}"', 4);
+    = check('var n = 4; "{n}"', "4");
 
 module.exports.stringInterpolateParts
     = check('var n = 2; "foo-{n}-bar"', 'foo-2-bar');
