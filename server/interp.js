@@ -567,15 +567,16 @@ var ILazySeq = itype('lazy sequence', ILazy, function (producer) {
 ILazy.forcingMethods(ILazySeq, 'getProperty', 'addToArray');
 ILazy.lazyMethods(ILazySeq, 'im_map', 'im_where', 'im_concat');
 
-ILazySeq.range = function (from, to) {
+ILazySeq.range = function (from, to, step) {
     from = IValue.to_js(from);
     to = IValue.to_js(to);
+    step = step && IValue.to_js(step) || 1;
 
     return new ILazySeq(continuate(function () {
-        if (from === to)
+        if (step * from > step * to)
             return inil;
         else
-            return new ICons(from, ILazySeq.range(from + 1, to));
+            return new ICons(from, ILazySeq.range(from + step, to, step));
     }));
 };
 

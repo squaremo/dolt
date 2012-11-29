@@ -44,8 +44,16 @@ module.exports.vardecl
 
 // range
 
-module.exports.range = check('range(0,5)', [0,1,2,3,4]);
+module.exports.range = check('range(0,5)', [0,1,2,3,4,5]);
 module.exports.rangeLazy = check('range(42,1000000)[0]', 42);
+module.exports.rangeStep = check('range(1, 10, 1)[9]', 10);
+module.exports.rangeStep2 = check('range(0, 10, 2)', [0,2,4,6,8,10]);
+module.exports.rangeRemainder = check('range(0,10,3)', [0,3,6,9]);
+// No unary expression yet!
+module.exports.rangeNegativeStep = check('range(10, 0, 0-2)', [10,8,6,4,2,0]);
+module.exports.rangeNegativeRemainder
+    = check('range(10, 0, 0-3)', [10,7,4,1]);
+module.exports.rangeEmpty = check('range(1,0)', []);
 
 // map
 
@@ -110,7 +118,7 @@ module.exports.compNoopExplicit
     = check('[x for x in [1,2,3]]', [1,2,3]);
 
 module.exports.compAnonMap
-    = check('[_ + 1 for range(1,5)]', [2,3,4,5]);
+    = check('[_ + 1 for range(1,5)]', [2,3,4,5,6]);
 
 module.exports.compNested
     = check('[[x, y] for x in [0,1]; y in [0,1]]',
@@ -120,16 +128,16 @@ module.exports.compIf
     = check('[x for x in range(0, 5) if x < 3]', [0,1,2]);
 
 module.exports.compNestedDependent
-    = check('[x + y for x in range(0,4); y in range(0, x)]',
-            [1,2,3,3,4,5]);
+    = check('[x + y for x in range(0,3); y in range(0, x)]',
+            [0,1,2,2,3,4,3,4,5,6]);
 
 module.exports.compNestedIf
-    = check('[x + y for x in range(0,4); y in range(0, 4) if y < x]',
+    = check('[x + y for x in range(0,3); y in range(0, 3) if y < x]',
             [1,2,3,3,4,5]);
 
 module.exports.compIntermediateIf
-    = check('[x + y for x in range(0, 4) if 1 < x; y in range(0, x)]',
-            [2, 3, 3, 4, 5])
+    = check('[x + y for x in range(0, 3) if 1 < x; y in range(0, x)]',
+            [2,3,4,3,4,5,6]);
 
 module.exports.compField
     = check('[foo for [{foo: 1}, {foo: 2}]]', [1,2]);
