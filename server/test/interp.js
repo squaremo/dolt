@@ -127,6 +127,10 @@ module.exports.compNestedIf
     = check('[x + y for x in range(0,4); y in range(0, 4) if y < x]',
             [1,2,3,3,4,5]);
 
+module.exports.compIntermediateIf
+    = check('[x + y for x in range(0, 4) if 1 < x; y in range(0, x)]',
+            [2, 3, 3, 4, 5])
+
 module.exports.compField
     = check('[foo for [{foo: 1}, {foo: 2}]]', [1,2]);
 
