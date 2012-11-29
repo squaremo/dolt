@@ -1187,10 +1187,10 @@ ExpressionNoIn
  * are we. This syntax is actually used in the wild (e.g. by jQuery).
  */
 Statement
-  = Block
+  = ExpressionStatement
   / VariableStatement
   / EmptyStatement
-  / ExpressionStatement
+  / Block
   / IfStatement
   / IterationStatement
   / ContinueStatement
@@ -1276,7 +1276,7 @@ EmptyStatement
   = ";" { return { type: "EmptyStatement" }; }
 
 ExpressionStatement
-  = !("{" / FunctionToken) expression:Expression EOS { return expression; }
+  = !FunctionToken expression:Expression EOS { return expression; }
 
 IfStatement
   = IfToken __

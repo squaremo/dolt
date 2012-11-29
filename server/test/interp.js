@@ -22,6 +22,9 @@ function check(expr, expect) {
     };
 };
 
+module.exports.preferObjectLiteral
+    = check('{foo:"bar"}', {foo:"bar"});
+
 module.exports.trivialAddition
     = check('1+2', 3);
 
@@ -32,7 +35,7 @@ module.exports.katch
     = check('var ex; try { ex = (function () { throw "bang"; 42; })(); } catch (e) { ex = e; } ex;', 'bang');
 
 module.exports.objConstructorShortcut
-    = check('var foo = 1; ({foo})', {foo: 1});
+    = check('var foo = 1; {foo}', {foo: 1});
 
 module.exports.vardecl
     = check('var x = 100', {'!':'undefined'});
