@@ -7,7 +7,9 @@ function check(expr, expect) {
         assert.expect(1);
         var env = new interp.Environment(interp.builtins);
         env.runForJSON(expr, function (res, json) {
-            assert.deepEqual(json, expect);
+            // Compare JSON strings, because node's assert.deepEqual
+            // does not check for strict equality
+            assert.equal(JSON.stringify(json), JSON.stringify(expect));
             assert.done();
         }, function (err) {
             // nodeunit doesn't do a good job of presenting exceptions
