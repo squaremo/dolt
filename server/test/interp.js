@@ -123,3 +123,26 @@ module.exports.compField
 module.exports.compObjectShortcut
     = check('[{foo} for [{foo: 1, bar: 2}, {foo: 2, bar: 3}]]',
             [{foo: 1}, {foo: 2}]);
+
+// string interpolation
+
+module.exports.stringLiteral
+    = check("'{Literal}'", '{Literal}');
+
+module.exports.stringInterpolateTrivial
+    = check('"Literal"', 'Literal');
+
+module.exports.stringInterpolateExpression
+    = check('"{1 + 2}"', 3);
+
+module.exports.stringInterpolateVar
+    = check('var n = 4; "{n}"', 4);
+
+module.exports.stringInterpolateParts
+    = check('var n = 2; "foo-{n}-bar"', 'foo-2-bar');
+
+module.exports.stringInterpolateEscapesInLiteral
+    = check('"\\"\\{foo-{1 + 2}-bar\\}\\""', '"{foo-3-bar}"');
+
+module.exports.stringInterpolateEscapesInExpr
+    = check('"foo-{(\\{foo: \\"baz\\"\\}).foo}-bar"', 'foo-baz-bar');
