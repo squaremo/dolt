@@ -79,3 +79,38 @@ module.exports.arrayWhereProperties
 
 module.exports.arrayWhereExplicitVar
     = check('[1,20,2,30,3,15].where(x,10<x)', [20,30,15]);
+
+// comprehensions
+
+module.exports.compLazy
+    = check('var total = 0; function see(n) { total += n; }; [see(_) for [1,2,3]]; total', 0);
+
+module.exports.compForced
+    = check('var total = 0; function see(n) { total += n; }; [see(_) for [1,2,3]] [1]; total', 3);
+
+module.exports.compNoopAnonymous
+    = check('[_ for [1,2,3]]', [1,2,3]);
+
+module.exports.compNoopExplicit
+    = check('[x for x in [1,2,3]]', [1,2,3]);
+
+module.exports.compAnonMap
+    = check('[_ + 1 for range(1,5)]', [2,3,4,5]);
+
+module.exports.compNested
+    = check('[[x, y] for x in [0,1]; y in [0,1]]',
+            [[0,0], [0,1], [1,0], [1,1]]);
+
+module.exports.compIf
+    = check('[x for x in range(0, 5) if x < 3]', [0,1,2]);
+
+module.exports.compNestedDependent
+    = check('[x + y for x in range(0,4); y in range(0, x)]',
+            [1,2,3,3,4,5]);
+
+module.exports.compNestedIf
+    = check('[x + y for x in range(0,4); y in range(0, 4) if y < x]',
+            [1,2,3,3,4,5]);
+
+module.exports.compField
+    = check('[foo for [{foo: 1}, {foo: 2}]]', [1,2]);
