@@ -40,6 +40,11 @@ module.exports.objConstructorShortcut
 module.exports.vardecl
     = check('var x = 100', {'!':'undefined'});
 
+// object literals with properties that collide with the '!' type property
+module.exports.objConstructorSpecial
+    = check("{'!':1, '!!!': 2}", {'!!':1, '!!!!': 2});
+
+
 // sequences
 
 // range
