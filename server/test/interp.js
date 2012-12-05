@@ -44,6 +44,8 @@ module.exports.vardecl
 module.exports.objConstructorSpecial
     = check("{'!':1, '!!!': 2}", {'!!':1, '!!!!': 2});
 
+module.exports.objHasOwnProperty
+    = check("{hasOwnProperty: 1}", {hasOwnProperty: 1});
 
 // sequences
 

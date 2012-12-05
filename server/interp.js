@@ -40,6 +40,10 @@ function continuate(fun) {
     };
 }
 
+// A sane hasOwnProperty
+function hasOwnProperty(obj, prop) {
+    return Object.prototype.hasOwnProperty.call(obj, prop);
+}
 
 // Representation of types:
 //
@@ -367,7 +371,7 @@ var IObject = itype('object', IValue, function (obj) {
 
 IObject.prototype.truthy = continuate(function () {
     for (var p in this.obj) {
-        if (this.obj.hasOwnProperty(p))
+        if (hasOwnProperty(this.obj, p))
             return true;
     }
 
@@ -385,8 +389,8 @@ IObject.prototype.toJSValue = function () {
 IObject.prototype.getProperty = function (key, cont, econt) {
     key = IValue.to_js(key);
     // Avoid the prototype chain
-    return tramp(cont, this.obj.hasOwnProperty(key) ? this.obj[key]
-                                                    : iundefined);
+    return tramp(cont, hasOwnProperty(this.obj, key) ? this.obj[key]
+                                                     : iundefined);
 };
 
 IObject.prototype.setProperty = function (key, val, cont, econt) {
@@ -401,7 +405,7 @@ IObject.prototype.invokeMethod = function (name, args, env, cont, econt) {
         return m.call(this, args, env, cont, econt);
 
     // Otherwise interpret method invocations as property accesses
-    var prop = this.obj.hasOwnProperty(name) ? this.obj[name] : iundefined;
+    var prop = hasOwnProperty(this.obj, name) ? this.obj[name] : iundefined;
     return force(prop, function (val) {
         return val.invoke(args, env, cont, econt);
     }, econt);
@@ -417,7 +421,7 @@ IObject.prototype.renderJSON = function (cont, econt) {
     // First we need to collect the property keys so that we can
     // iterate over them below
     for (var p in obj)
-        if (obj.hasOwnProperty(p))
+        if (hasOwnProperty(obj, p))
             props.push(p);
 
     function do_props(i) {
@@ -780,7 +784,7 @@ var ITable = itype('table', IValue, function (data, columns) {
 });
 
 ITable.prototype.getProperty = continuate(function (key) {
-    if (this.hasOwnProperty(key))
+    if (hasOwnProperty(this, key))
         return this.key;
     else
         return iundefined;
