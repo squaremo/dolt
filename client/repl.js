@@ -1,4 +1,341 @@
-var TableControl = (function() {
+function inheritFrom(parentConstructor) {
+    function constr() {}
+    constr.prototype = parentConstructor.prototype;
+    return new constr();
+}
+
+var Widget = (function() {
+    function PrimitiveWidget() {}
+
+    PrimitiveWidget.by_type = {};
+
+    PrimitiveWidget.define = function (type, methods) {
+        var singleton = new PrimitiveWidget();
+        for (var m in methods)
+            singleton[m] = methods[m];
+
+        PrimitiveWidget.by_type[type] = singleton;
+    };
+
+    'visualSize render'.split(' ').forEach(function (name) {
+        Widget[name] = function (val /* ... */) {
+            if (val instanceof Widget) {
+                return val[name].apply(val,
+                                   Array.prototype.slice.call(arguments, 1));
+            }
+            else {
+                var target = PrimitiveWidget.by_type[typeof(val)]
+                                             || PrimitiveWidget.prototype;
+                return target[name].apply(undefined, arguments);
+            }
+        };
+    });
+
+    PrimitiveWidget.prototype.visualSize = function (val) {
+        return String(val).length;
+    };
+
+    PrimitiveWidget.prototype.render = function (val, appender) {
+        appender($('<code/>').addClass(typeof(val)).text(String(val)));
+    };
+
+
+    PrimitiveWidget.define('string', {
+        visualSize: function (val) { return val.length + 2; },
+
+        render: function (val, appender) {
+            appender($('<code/>').addClass(typeof(val)).text('"' + val + '"'));
+        }
+    });
+
+
+    function Widget() {
+    }
+
+    Widget.prototype.visualSize = function () {
+        return this.size;
+    };
+
+    Widget.prototype.isCompact = function () {
+        return !isNaN(this.size);
+    };
+
+    function ArrayWidget(arr, parent) {
+        this.arr = arr;
+        this.parent = parent;
+
+        var size = 0;
+        var separators = 0;
+
+        for (var i = 0; i < arr.length; i++) {
+            arr[i] = Widget.widgetize(arr[i], this);
+            size += Widget.visualSize(arr[i]) + separators;
+            separators = 2;
+        }
+
+        this.size = size + 2;
+    }
+
+    ArrayWidget.prototype = inheritFrom(Widget);
+
+    ArrayWidget.prototype.render = function (appender) {
+        appender('[');
+
+        if (this.isCompact()) {
+            var sep = '';
+
+            for (var i = 0; i < this.arr.length; i++) {
+                appender(sep);
+                Widget.render(this.arr[i], appender);
+                sep = ', ';
+            }
+        }
+        else {
+            var tab = $('<table/>').addClass('array');
+            appender(tab);
+
+            for (var i = 0; i < this.arr.length; i++) {
+                var td = $('<td/>');
+                tab.append($('<tr/>').append(td));
+                Widget.renderInto(this.arr[i], td);
+                if (i < this.arr.length - 1)
+                    td.append(',');
+            }
+        }
+
+        appender(']');
+    };
+
+    // RE matching keys that were encoded to differentiate them from
+    // the magic '!' type property.
+    var encoded_property_name_re = /^!+$/;
+
+    function ObjectWidget(obj, parent) {
+        this.obj = obj;
+        this.parent = parent;
+        this.keys = Object.getOwnPropertyNames(obj).sort();
+
+        var size = 0;
+        var separators = 2;
+
+        for (var i = 0; i < this.keys.length; i++) {
+            var k = this.keys[i];
+
+            if (encoded_property_name_re.test(k)) {
+                // Here we rely on the fact that sorting the keys will
+                // have put the encoded keys in the right order so
+                // that we don't overwrite properties when decoding.
+                // I.e., we decode '!!'  first, then '!!!', then
+                // '!!!!', etc.
+                var decoded = k.substring(1);
+                obj[decoded] = Widget.widgetize(obj[k], this);
+                delete obj[k];
+                k = this.keys[i] = decoded;
+            }
+            else {
+                obj[k] = Widget.widgetize(obj[k], this);
+            }
+
+            size += Widget.visualSize(obj[k]) + k.length + separators;
+            separators = 4;
+        }
+
+        // If an object becomes too cumbersome, present it as a table
+        if (size > 50)
+            size = undefined;
+        else
+            size += 2;
+
+        this.size = size;
+    }
+
+    ObjectWidget.prototype = inheritFrom(Widget);
+
+    ObjectWidget.prototype.render = function (appender) {
+        appender('{');
+
+        if (this.isCompact()) {
+            var sep = '';
+
+            for (var i = 0; i < this.keys.length; i++) {
+                appender(sep);
+                var k = this.keys[i];
+                appender(k);
+                appender(': ');
+                Widget.render(this.obj[k], appender);
+                sep = ', ';
+            }
+        }
+        else {
+            var tab = $('<table/>').addClass('object');
+            appender(tab);
+
+            for (var i = 0; i < this.keys.length; i++) {
+                var k = this.keys[i];
+                var td = $('<td/>');
+                tab.append($('<tr/>')
+                           .append($('<td/>').addClass('key').text(k + ':'))
+                           .append(td));
+                Widget.renderInto(this.obj[k], td);
+                if (i < this.keys.length - 1)
+                    td.append(',');
+            }
+        }
+
+        appender('}');
+    };
+
+    var widgetizeSpecial = {
+        undefined: function () { return undefined; },
+    };
+
+    Widget.widgetize = function (val, parent) {
+        if (typeof(val) === 'object') {
+            if (Array.isArray(val))
+                return new ArrayWidget(val, parent);
+
+            var type = val['!'];
+            if (type) {
+                var handler = widgetizeSpecial[type];
+                if (handler)
+                    return handler(val, parent);
+                else
+                    return "UNKNOWN TYPE";
+            }
+
+            return new ObjectWidget(val, parent);
+        }
+        else {
+            // Primitive values are not turned into widgets
+            return val;
+        }
+    }
+
+    Widget.registerSpecial = function (name, constr) {
+        widgetizeSpecial[name] = function (val, parent) {
+            return new constr(val, parent);
+        };
+    };
+
+    Widget.renderInto = function (val, container) {
+        var strbuf = '';
+
+        function flush() {
+            if (strbuf) {
+                container.append(document.createTextNode(strbuf));
+                strbuf = '';
+            }
+        }
+
+        function appender(stuff) {
+            if (typeof(stuff) === 'string') {
+                strbuf += stuff;
+            }
+            else {
+                flush();
+                container.append(stuff);
+            }
+        }
+
+        Widget.render(val, appender);
+        flush();
+    }
+
+    return Widget;
+})();
+
+// Table control
+(function() {
+    function TableWidget(val, parent) {
+        this.cols = val.columns.map(function(name) { return {key: name}; });
+
+        var data = val.data;
+
+        for (var i = 0; i < data.length; i++)
+            for (var k in data[i])
+                data[i][k] = Widget.widgetize(data[i][k], this);
+
+        this.rows = data;
+    }
+
+    TableWidget.prototype = inheritFrom(Widget);
+
+    TableWidget.prototype.render = function (appender) {
+        var self = this;
+
+        this.container = $('<div/>');
+        appender(this.container);
+
+        var buttons = $('<span/>').addClass('buttons').appendTo(this.container);
+        this.installButtons(buttons);
+        this.tbody = $('<tbody/>');
+
+        // The maximum width of the table, based on the viewport size
+        var maxwidth = $(window).width() * 0.95
+
+        // btable is the table that will contain the tbody; bdiv wraps
+        // btable.
+        this.btable = $('<table/>').css('table-layout', 'auto');
+        var bdiv = $('<div/>').css({
+            overflow: 'auto',
+            'max-height': $(window).height() * 0.8,
+            'max-width': maxwidth
+        });
+        this.container.append(bdiv.append(this.btable));
+
+        // Construct the column headers
+        var hrow = $('<tr/>');
+        for (var i = 0; i < this.cols.length; i++) {
+            hrow.append(this.makeColumnHeader(this.cols[i]));
+        }
+
+        this.thead = $('<thead/>').append(hrow);
+        this.btable.append(this.thead).append(this.tbody);
+
+        this.populateTBody();
+
+        // Now that the browser has laid out the table, freeze the
+        // column widths.
+        var totalwidth = 0;
+        hrow.children('th').each(function (i) {
+            var th = $(this);
+            var width = th.width();
+            self.cols[i].width = width;
+            totalwidth += width;
+        });
+
+        var tablecss = {
+            'table-layout': 'fixed',
+            'width': totalwidth
+        };
+
+        this.btable.css(tablecss);
+
+        // Construct a separate table to contain the column headers
+        // (so that the body table can be scrolled vertically while
+        // the column headers remain visible).  hdiv contains this
+        // table.  The padding right is a fudge to avoid an anomaly
+        // when the table is scrolled to the extreme right.
+        this.htable = $('<table/>').css(tablecss).css('padding-right', 100).append(this.thead);
+        var hdiv = $('<div/>').css({
+            overflow: 'hidden',
+            'max-width': maxwidth
+        }).append(this.htable).insertBefore(bdiv);
+
+        function setWidths(elems) {
+            elems.each(function (i) {
+                $(this).css('width', self.cols[i].width);
+            });
+        }
+
+        setWidths(this.thead.children('tr').children('th'));
+        setWidths(this.tbody.children('tr:first').children('td'));
+
+        // Lock the scrolling of the header table to the body table.
+        bdiv.scroll(function () {
+            hdiv.scrollLeft(bdiv.scrollLeft());
+        });
+    };
 
     function sortByKey(rows, key, descending) {
         var i = 0;
@@ -47,86 +384,7 @@ var TableControl = (function() {
         return enumrows.map(function (er) { return er.row; });
     };
 
-    function View(data) {
-        this.cols = data.columns.map(function(name) { return {key: name}; });
-        this.rows = data.data;
-    }
-
-    View.prototype.install = function (container) {
-        var view = this;
-        this.container = container.empty();
-        var buttons = $('<span/>').addClass('buttons').appendTo(container);
-        view.installButtons(buttons);
-        this.tbody = $('<tbody/>');
-
-        // The maximum width of the table, based on the viewport size
-        var maxwidth = $(window).width() * 0.95
-
-        // btable is the table that will contain the tbody; bdiv wraps
-        // btable.
-        this.btable = $('<table/>').css('table-layout', 'auto');
-        var bdiv = $('<div/>').css({
-            overflow: 'auto',
-            'max-height': $(window).height() * 0.8,
-            'max-width': maxwidth
-        });
-        container.append(bdiv.append(this.btable));
-
-        // Construct the column headers
-        var hrow = $('<tr/>');
-        for (var i = 0; i < this.cols.length; i++) {
-            hrow.append(this.makeColumnHeader(this.cols[i]));
-        }
-
-        this.thead = $('<thead/>').append(hrow);
-        this.btable.append(this.thead).append(this.tbody);
-
-        this.populateTBody();
-
-        // Now that the browser has laid out the table, freeze the
-        // column widths.
-        var totalwidth = 0;
-        hrow.children('th').each(function (i) {
-            var th = $(this);
-            var width = th.width();
-            view.cols[i].width = width;
-            totalwidth += width;
-        });
-
-        var tablecss = {
-            'table-layout': 'fixed',
-            'width': totalwidth
-        };
-
-        this.btable.css(tablecss);
-
-        // Construct a separate table to contain the column headers
-        // (so that the body table can be scrolled vertically while
-        // the column headers remain visible).  hdiv contains this
-        // table.  The padding right is a fudge to avoid an anomaly
-        // when the table is scrolled to the extreme right.
-        this.htable = $('<table/>').css(tablecss).css('padding-right', 100).append(this.thead);
-        var hdiv = $('<div/>').css({
-            overflow: 'hidden',
-            'max-width': maxwidth
-        }).append(this.htable).insertBefore(bdiv);
-
-        function setWidths(elems) {
-            elems.each(function (i) {
-                $(this).css('width', view.cols[i].width);
-            });
-        }
-
-        setWidths(this.thead.children('tr').children('th'));
-        setWidths(this.tbody.children('tr:first').children('td'));
-
-        // Lock the scrolling of the header table to the body table.
-        bdiv.scroll(function () {
-            hdiv.scrollLeft(bdiv.scrollLeft());
-        });
-    }
-
-    View.prototype.sortOn = function (col) {
+    TableWidget.prototype.sortOn = function (col) {
         var descending = (this.sortedby === col && !this.sortdescending);
         this.rows = sortByKey(this.rows, col.key, descending);
 
@@ -140,47 +398,50 @@ var TableControl = (function() {
         this.populateTBody();
     };
 
-    View.prototype.setSortIndicator = function (col) {
+    TableWidget.prototype.setSortIndicator = function (col) {
         this.sortedby.header.addClass(this.sortdescending ? 'descending'
                                                           : 'ascending');
     };
 
-    View.prototype.makeColumnHeader = function (col) {
-        var view = this;
+    TableWidget.prototype.makeColumnHeader = function (col) {
+        var self = this;
         col.header = $('<th>').text(col.key).click(function() {
-            view.sortOn(col);
+            self.sortOn(col);
         });
         if (col.width) { col.header.css('width', col.width); }
         if (this.sortedby === col) { this.setSortIndicator(); }
         return col.header;
     };
 
-    View.prototype.makeCell = function (col, row) {
-        var val = this.rows[row][col.key];
-        var td = $('<td>');
-        TreeControl.install(td, val);
+    TableWidget.prototype.fillCell = function (td, col, row) {
         // We only need to add width properties on the first row
-        if (!row && col.width) { td.css('width', col.width); }
-        return td;
+        if (!row && col.width)
+            td.css('width', col.width);
+
+        Widget.renderInto(this.rows[row][col.key], td);
     };
 
-    View.prototype.populateTBody = function () {
+    TableWidget.prototype.populateTBody = function () {
         var tbody = this.tbody;
         tbody.empty();
 
         var colwidths = this.colwidths;
         for (var i = 0; i < this.rows.length; i++) {
             var row = $('<tr/>');
+            tbody.append(row);
+
             for (var j = 0; j < this.cols.length; j++) {
                 var col = this.cols[j];
-                if (col.header) { row.append(this.makeCell(col, i)); }
-            }
+                var td = $('<td>');
+                row.append(td);
 
-            tbody.append(row);
+                if (col.header)
+                    this.fillCell(td, col, i);
+            }
         }
     };
 
-    View.prototype.selectColumns = function () {
+    TableWidget.prototype.selectColumns = function () {
         var columnsform = $('<form/>');
         this.container.prepend(columnsform);
 
@@ -193,32 +454,32 @@ var TableControl = (function() {
 
         columnsform.append('<input type="submit" value="Done"/>');
 
-        var view = this;
+        var self = this;
         columnsform.submit(function () {
             columnsform.remove();
-            view.columnsbutton.css('display', 'inline');
+            self.columnsbutton.css('display', 'inline');
             return false;
         });
     };
 
-    View.prototype.columnShownCheckbox = function (col) {
-        var view = this;
+    TableWidget.prototype.columnShownCheckbox = function (col) {
+        var self = this;
         var checkbox = $('<input type="checkbox"/>');
         if (col.header) { checkbox.attr("checked", "checked"); }
         checkbox.change(function () {
             var show = !!checkbox.attr("checked");
             if (show) {
-                view.showColumn(col);
+                self.showColumn(col);
             }
             else {
-                view.unshowColumn(col);
+                self.unshowColumn(col);
             }
-            view.recalcTotalWidth();
+            self.recalcTotalWidth();
         });
         return checkbox;
     };
 
-    View.prototype.unshowColumn = function (col) {
+    TableWidget.prototype.unshowColumn = function (col) {
         var index = this.shownColumnIndex(col);
         col.header.remove();
         col.header = null;
@@ -227,7 +488,7 @@ var TableControl = (function() {
         });
     };
 
-    View.prototype.showColumn = function (col) {
+    TableWidget.prototype.showColumn = function (col) {
         var index = this.shownColumnIndex(col);
 
         // Insert el under parent at index
@@ -240,17 +501,19 @@ var TableControl = (function() {
             }
         }
 
-        var view = this;
+        var self = this;
         this.thead.children('tr').each(function () {
-            insert(this, view.makeColumnHeader(col));
+            insert(this, self.makeColumnHeader(col));
         });
         this.tbody.children('tr').each(function (i) {
-            insert(this, view.makeCell(col, i));
+            var td = $('<td>');
+            insert(this, td);
+            self.fillCell(td, col, i);
         });
     };
 
     // Return the number of shown columns before the given column
-    View.prototype.shownColumnIndex = function (col) {
+    TableWidget.prototype.shownColumnIndex = function (col) {
         var res = 0;
         for (var i = 0; i < this.cols.length; i++) {
             if (this.cols[i] === col) { return res; }
@@ -259,7 +522,7 @@ var TableControl = (function() {
         throw "couldn't find column";
     };
 
-    View.prototype.recalcTotalWidth = function () {
+    TableWidget.prototype.recalcTotalWidth = function () {
         var totalwidth = 0;
         for (var i = 0; i < this.cols.length; i++) {
             if (this.cols[i].header) {
@@ -271,101 +534,20 @@ var TableControl = (function() {
         this.htable.css('width', totalwidth);
     }
 
-    View.prototype.installButtons = function (buttons) {
-        var view = this;
+    TableWidget.prototype.installButtons = function (buttons) {
+        var self = this;
         this.columnsbutton = $('<a href="#" class="button"/>')
             .text('select columns')
             .click(function () {
-                view.columnsbutton.css('display', 'none');
-                view.selectColumns();
+                self.columnsbutton.css('display', 'none');
+                self.selectColumns();
             });
         buttons.append(this.columnsbutton);
     };
 
-    return {
-        install: function (container, data) {
-            var view = new View(data);
-            view.install(container);
-        }
-    };
+    Widget.registerSpecial('table', TableWidget);
 })();
 
-var TreeControl = (function () {
-    function printValue(value) {
-        var t = typeof value;
-        switch (t) {
-        case 'date':
-            return $('<code/>')
-                .append($('<time/>').addClass(t).text(String(value)));
-        case 'object':
-            if (value === null) {
-                t = 'null';
-                break;
-            }
-            else {
-                return printComposite(
-                    value, (Array.isArray(value)) ? 'array' : 'object');
-            }
-        case 'function':
-            value = '[Function]';
-            break;
-        }
-
-        return $('<code/>').addClass(t).text(String(value));
-    }
-
-    function printComposite(obj, t) {
-        return ((isCompact(obj)) ? printCompact(obj, t) : printFull(obj, t)).addClass('composite');
-    }
-
-    // totally ad-hoc. Other methods: items are ground types and there
-    // are fewer than x (trickier for objects than arrays, since keys
-    // can be long ..); only do this for arrays; etc.
-    function isCompact(obj) {
-        return JSON.stringify(obj).length < 30;
-    }
-
-    // Decode keys that were encoded to differentiate them from the
-    // magic '!' type property.
-    var decode_property_name_re = /^!+$/;
-
-    function decodeKey(k) {
-        if (decode_property_name_re.test(k))
-            return k.substring(1);
-        else
-            return k;
-    }
-
-    function printCompact(obj, t) {
-        var outer = $((t === 'array') ? '<ol/>' : '<ul/>').addClass(t);
-        for (var k in obj) {
-            outer.append($('<li/>').addClass('item')
-                         .append($('<span/>').addClass('key')
-                                   .text(JSON.stringify(decodeKey(k))),
-                                 $('<span/>').addClass('value')
-                                   .append(printValue(obj[k]))))
-        }
-        return outer;
-    }
-
-    function printFull(obj, t) {
-        var outer = $('<table/>').addClass(t);
-        for (var k in obj) {
-            outer.append($('<tr/>').addClass('item')
-                         .append($('<td/>') .addClass('key')
-                                   .text(JSON.stringify(decodeKey(k))),
-                                 $('<td/>').addClass('value')
-                                   .append(printValue(obj[k]))))
-        }
-        return outer;
-    }
-
-    return {
-        install: function (container, data) {
-            container.empty().append(printValue(data));
-        }
-    };
-})();
 
 $(function() {
     var repl = $('#repl');
@@ -398,19 +580,16 @@ $(function() {
         output.empty();
 
         if (response.hasOwnProperty('result')) {
-            var type = response.result['!'];
-            if (type !== 'undefined') {
+            var res = Widget.widgetize(response.result);
+            if (res !== undefined) {
                 var resdiv = $('<div/>').addClass('result');
                 output.append(resdiv);
 
-                var vardiv = $('<var class="resultvar"/>').text(response.variable);
-                var valdiv = $('<div class="resultval"/>');
-                resdiv.append(vardiv).append(valdiv);
+                resdiv.append($('<var class="resultvar"/>')
+                              .text(response.variable))
+                       .append(' = ');
 
-                if (type === 'table')
-                    TableControl.install(valdiv, response.result);
-                else
-                    TreeControl.install(valdiv, response.result);
+                Widget.renderInto(res, resdiv);
             }
         }
         else {
