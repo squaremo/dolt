@@ -6,7 +6,8 @@ var misc = require('./misc');
 var promisify = require('promisify');
 var fs = promisify.object({
     writeFile: promisify.cb_func(),
-    readFile: promisify.cb_func()
+    readFile: promisify.cb_func(),
+    readdir: promisify.cb_func()
 })(require('fs'));
 var interp = require('./interp');
 
@@ -18,13 +19,14 @@ var builtins = {
     post: interp.promised_builtin(misc.post)
 };
 
-function Session() {
-    this.id = uuid.v1();
+function Session(id) {
+    this.id = id;
+    this.file = '/tmp/history-' + id + '.json';
     this.env = new interp.Environment(interp.builtins);
     for (var p in builtins) { this.env.bind(p, builtins[p]); }
 
     var self = this;
-    this.history = fs.readFile("/tmp/history.json").then(function (data) {
+    this.history = fs.readFile(this.file).then(function (data) {
         return JSON.parse(data);
     }, function (err) {
         if (err.code === 'ENOENT')
@@ -63,8 +65,8 @@ Session.prototype.saveHistory = function () {
 
     var self = this;
     function writeHistory() {
-        Session.stringify(self.history).then(function (history) {
-            return fs.writeFile("/tmp/history.json", history);
+        return Session.stringify(self.history).then(function (history) {
+            return fs.writeFile(self.file, history);
         }).then(function () {
             if (self.saving_history === "again") {
                 self.saving_history = true;
@@ -76,7 +78,27 @@ Session.prototype.saveHistory = function () {
         });
     }
 
-    writeHistory();
+    return writeHistory();
+}
+
+Session.enumSessions = function () {
+    return fs.readdir('/tmp').then(function(files) {
+        var ids = [];
+        files.forEach(function(path) {
+            var match = /^history-(.+)\.json$/.exec(path);
+            if (match) { ids.push({id: match[1]}); }
+        });
+        return ids;
+    });
+};
+
+Session.newSession = function () {
+    var id = uuid.v1();
+    return new Session(id);
+}
+
+Session.fromId = function (id) {
+    return new Session(id);
 }
 
 Session.prototype.eval = function (expr) {
@@ -90,6 +112,7 @@ Session.prototype.eval = function (expr) {
         };
 
         history.push(history_entry);
+        console.log("Saving: " + self.id);
         self.saveHistory();
 
         var d = when.defer();

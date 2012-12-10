@@ -3,6 +3,10 @@ form.prompt label:after { content: '> '; }
 
 .history:before { content: '> '; }
 
+#sessions .current {
+    background-color: yellow;
+}
+
 /* Result view buttons */
 a.button { margin-left: 1em; }
 
@@ -16,7 +20,6 @@ table.object td.key { vertical-align: top; }
 .number, .string, .boolean, .null, .date {
     color: blue;
 }
-
 
 /* Table view */
 th.ascending:after { content: ' \25be'; }

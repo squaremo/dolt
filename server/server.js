@@ -1,6 +1,7 @@
 'use strict';
 
 var express = require('express');
+var mu = require('mu2');
 var when = require('when');
 var Session = require('./session');
 var misc = require('./misc');
@@ -32,11 +33,29 @@ function respond(connection, p) {
     });
 }
 
-var session = new Session();
+mu.root = path;
+
+app.get('/(index(.html)?)?', function(req, res) {
+    var session = Session.enumSessions().then(function(ids) {
+        mu.compileAndRender('index.html', {sessions: ids})
+            .pipe(res);
+    });
+});
+
+app.post('/new', function(req, res) {
+    var session = Session.newSession();
+    res.writeHead(303, 'Session created', {'Location': '/#' + session.id});
+    session.saveHistory().then(function() {
+        mu.compileAndRender('new.html', {session: session.id}).pipe(res);
+    });
+});
 
 sockjs.on('connection', function(connection) {
-    connection.on('data', handler(session, connection));
-    respond(connection, Session.stringify(session.history));
+    connection.on('data', function(id) {
+        var session = Session.fromId(id);
+        connection.on('data', handler(session, connection));
+        respond(connection, Session.stringify(session.history));
+    });
 });
 
 function handler(session, connection) {

@@ -611,18 +611,28 @@ $(function() {
         return prompt();
     }
 
-    KS = [];
+    var CONN;
+    var KS = [];
     function fireK(m) {
         var k = KS.pop();
         k(JSON.parse(m.data));
     }
 
-    CONN = new SockJS(eval_uri);
-    CONN.onmessage = function(m) {
-        loadHistory(JSON.parse(m.data));
-        CONN.onmessage = fireK;
-        return prompt();
-    };
+    function openSession(id) {
+        if (CONN) {
+            CONN.close();
+            $(repl).empty();
+        }
+        CONN = new SockJS(eval_uri);
+        CONN.onmessage = function(m) {
+            loadHistory(JSON.parse(m.data));
+            CONN.onmessage = fireK;
+            return prompt();
+        };
+        CONN.onopen = function() { CONN.send(id)};
+        $('#sessions li a').removeClass('current');
+        $('#sessions').find('li a[href="#' + id + '"]').addClass('current');
+    }
 
     function sendToBeEvaluated(exp, k) {
         KS.push(k);
@@ -639,4 +649,12 @@ $(function() {
                 fillOutputSection(output, history[i]);
         }
     }
+
+    window.addEventListener('popstate', function(_state) {
+        if (window.location.hash) {
+            var sessionId = window.location.hash.substr(1);
+            openSession(sessionId);
+        }
+    });
+
 });

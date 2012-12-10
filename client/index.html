@@ -13,6 +13,17 @@
 <body>
   <section id="errors">
   </section>
+  <aside id="sessions">
+    <form action="/new" method="POST">
+      <input type="submit" value="New session"></input>
+    </form>
+
+    <ul>
+      {{#sessions}}
+        <li><a href="#{{id}}">{{id}}</a></li>
+      {{/sessions}}
+    </ul>
+  </aside>
   <section id="repl">
   </section>
 </body>
