@@ -264,6 +264,24 @@ IValue.renderJSON = function (val, cont, econt) {
     return IValue.from_js(val).renderJSON(cont, econt);
 };
 
+// Decode the JSON representation of a value back into the
+// corresponding JS value / IValue.
+IValue.decodeJSON = function (json) {
+    if (typeof(json) !== 'object')
+        return json;
+
+    if (json instanceof Array)
+        return new IArray.decodeJSON(json);
+
+    var type = json['!'];
+    if (type === undefined)
+        return new IObject.decodeJSON(json);
+    else
+        return json_decoder[type](json);
+}
+
+var json_decoder = {};
+
 // Invoke an interpreter function with JS arguments
 function invoke(fun, args, cont, econt) {
     return force(fun, function (fun) {
@@ -411,7 +429,7 @@ IObject.prototype.invokeMethod = function (name, args, env, cont, econt) {
     }, econt);
 };
 
-IObject.encode_property_name_re = /^!+$/;
+IObject.encoded_property_name_re = /^!+$/;
 
 IObject.prototype.renderJSON = function (cont, econt) {
     var obj = this.obj;
@@ -430,7 +448,7 @@ IObject.prototype.renderJSON = function (cont, econt) {
 
         return IValue.renderJSON(obj[props[i]], function (json) {
             var enc_prop = props[i];
-            if (IObject.encode_property_name_re.test(enc_prop))
+            if (IObject.encoded_property_name_re.test(enc_prop))
                 enc_prop = '!' + enc_prop;
 
             res[enc_prop] = json;
@@ -441,6 +459,24 @@ IObject.prototype.renderJSON = function (cont, econt) {
     return do_props(0);
 };
 
+IObject.decodeJSON = function (json) {
+    var encoded = null;
+
+    for (var p in json) {
+        json[p] = IValue.decodeJSON(json[p]);
+        if (IObject.encoded_property_name_re.test(p)) {
+            encoded = encoded || {};
+            encoded[p.substring(1)] = json[p];
+            delete json[p];
+        }
+    }
+
+    if (encoded)
+        for (var p in encoded)
+            json[p] = encoded[p];
+
+    return new IObject(json);
+};
 
 // Lazies
 
@@ -775,6 +811,10 @@ IArray.prototype.renderJSON = function (cont, econt) {
     return do_elems(0);
 };
 
+IArray.decodeJSON = function (json) {
+    return json.map(IValue.decodeJSON);
+};
+
 
 // A Table type
 
@@ -801,6 +841,11 @@ ITable.prototype.renderJSON = function (cont, econt) {
             });
         });
     });
+};
+
+json_decoder.table = function (json) {
+    return new ITable(IValue.decodeJSON(json.data),
+                      IValue.decodeJSON(json.columns));
 };
 
 
@@ -1226,6 +1271,7 @@ function run(p) {
 //run("print(callcc(function (c) { c('Hello'); }))");
 //run("var x; callcc(function (c) { x = c; }); print('Hello'); x();");
 
+module.exports.IValue = IValue;
 module.exports.Environment = Environment;
 module.exports.builtins = builtins;
 module.exports.builtin = builtin;

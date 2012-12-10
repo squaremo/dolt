@@ -36,7 +36,8 @@ function Session(id) {
     }).then(function (history) {
         for (var i = 0; i < history.length; i++)
             if (history[i].result)
-                self.env.bind(history[i].variable, history[i].result);
+                self.env.bind(history[i].variable,
+                              interp.IValue.decodeJSON(history[i].result));
 
         return history;
     });
