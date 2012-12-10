@@ -8,7 +8,8 @@
         "node-uuid": "",
         "noodle": "git+https://github.com/squaremo/noodle.git",
         "promisify": "",
-        "sockjs": ""
+        "sockjs": "",
+        "mu2": ""
     },
     "devDependencies": {
         "nodeunit": "",
