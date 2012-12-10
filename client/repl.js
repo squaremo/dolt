@@ -612,7 +612,9 @@ $(function() {
     }
 
     var CONN;
+    var SESSIONID;
     var KS = [];
+
     function fireK(m) {
         var k = KS.pop();
         k(JSON.parse(m.data));
@@ -625,11 +627,12 @@ $(function() {
         }
         CONN = new SockJS(eval_uri);
         CONN.onmessage = function(m) {
+            SESSIONID = id;
             loadHistory(JSON.parse(m.data));
             CONN.onmessage = fireK;
             return prompt();
         };
-        CONN.onopen = function() { CONN.send(id)};
+        CONN.onopen = function() { CONN.send(id); };
         $('#sessions li a').removeClass('current');
         $('#sessions').find('li a[href="#' + id + '"]').addClass('current');
     }
@@ -650,11 +653,16 @@ $(function() {
         }
     }
 
-    window.addEventListener('popstate', function(_state) {
+    function maybeStartSession() {
         if (window.location.hash) {
             var sessionId = window.location.hash.substr(1);
-            openSession(sessionId);
+            if (sessionId != SESSIONID) {
+                openSession(sessionId);
+            }
         }
-    });
+    }
 
+    window.addEventListener('popstate', maybeStartSession);
+
+    maybeStartSession();
 });
