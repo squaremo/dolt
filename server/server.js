@@ -23,7 +23,7 @@ app.configure(function(){
     app.use(express.static(path));
 });
 
-// Utility to hook a promise up to an Express response
+// Utility to hook a promise up to a SockJS connection
 function respond(connection, p) {
     when(p, function(out) {
         connection.write(out);
@@ -51,8 +51,9 @@ app.post('/new', function(req, res) {
 });
 
 sockjs.on('connection', function(connection) {
-    connection.on('data', function(id) {
+    connection.on('data', function opensession(id) {
         var session = Session.fromId(id);
+        connection.removeListener('data', opensession);
         connection.on('data', handler(session, connection));
         respond(connection, Session.stringify(session.history));
     });
