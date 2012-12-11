@@ -51,9 +51,8 @@ app.post('/new', function(req, res) {
 });
 
 sockjs.on('connection', function(connection) {
-    connection.on('data', function opensession(id) {
+    connection.once('data', function (id) {
         var session = Session.fromId(id);
-        connection.removeListener('data', opensession);
         connection.on('data', handler(session, connection));
         respond(connection, Session.stringify(session.history));
     });
