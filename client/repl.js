@@ -633,8 +633,8 @@ $(function() {
             return prompt();
         };
         CONN.onopen = function() { CONN.send(id); };
-        $('#sessions li a').removeClass('current');
-        $('#sessions').find('li a[href="#' + id + '"]').addClass('current');
+        $('#sessions a').removeClass('current');
+        $('#sessions').find('a[href="#' + id + '"]').addClass('current');
     }
 
     function sendToBeEvaluated(exp, k) {

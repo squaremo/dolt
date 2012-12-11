@@ -11,19 +11,19 @@
   <link rel="stylesheet" type="text/css" href="values.css"/>
 </head>
 <body>
-  <section id="errors">
-  </section>
-  <aside id="sessions">
+  <header id="errors">
+  </header>
+  <header id="sessions">
     <form action="/new" method="POST">
       <input type="submit" value="New session"></input>
     </form>
-
-    <ul>
+    <nav>
+      <a href="#" class="current">Choose session</a>
       {{#sessions}}
-        <li><a href="#{{id}}">{{id}}</a></li>
+        <a href="#{{id}}">{{id}}</a>
       {{/sessions}}
-    </ul>
-  </aside>
+    </nav>
+  </header>
   <section id="repl">
   </section>
 </body>

@@ -4,7 +4,55 @@ form.prompt label:after { content: '> '; }
 .history:before { content: '> '; }
 
 #sessions .current {
-    background-color: yellow;
+    background-color: green;
+}
+
+#sessions a.current {
+    color: white;
+}
+
+#sessions {
+    margin: 0;
+    position: fixed;
+    width: 100%;
+    height: 60px;
+    top: 0;
+    background: #eee;
+}
+
+#sessions form {
+    display: inline;
+}
+
+#sessions nav {
+    width: 18em;
+    position: absolute;
+}
+
+#sessions nav a {
+    padding: 4px;
+    display: none;
+    background: white;
+}
+
+#sessions nav a:hover {
+    background: yellow;
+    color: black;
+}
+
+#sessions nav:hover a {
+    display: block;
+}
+
+#sessions nav a.current {
+    display: block;
+}
+
+#repl {
+    width: 96%;
+    margin-left: 12px;
+    margin-top: 60px;
+    padding: 8px;
 }
 
 /* Result view buttons */
