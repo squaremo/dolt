@@ -282,6 +282,8 @@ IValue.decodeJSON = function (json) {
 
 var json_decoder = {};
 
+json_decoder['undefined'] = function(_v) { return iundefined; }
+
 // Invoke an interpreter function with JS arguments
 function invoke(fun, args, cont, econt) {
     return force(fun, function (fun) {
