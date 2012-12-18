@@ -1,5 +1,5 @@
 *~
 node_modules/
 server/node_modules/
-server/javascript.js
-client/javascript.js
+server/parser.js
+client/parser.js

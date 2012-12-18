@@ -1,6 +1,6 @@
 'use strict';
 
-var parser = require('./javascript');
+var parser = require('./parser');
 var util = require('util');
 
 // Basic interpreter machinery

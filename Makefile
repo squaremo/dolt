@@ -1,14 +1,15 @@
 PEGJS:=./node_modules/pegjs/bin/pegjs
+GRAMMAR:=server/grammar.pegjs
 
 .PHONY: parsers test
 
-parsers: node_modules/pegjs server/javascript.js client/javascript.js
+parsers: node_modules/pegjs server/parser.js client/parser.js
 
-server/javascript.js: server/javascript.pegjs
-	$(PEGJS) $< server/javascript.js
+server/parser.js: $(GRAMMAR)
+	$(PEGJS) $< $@
 
-client/javascript.js: server/javascript.pegjs
-	$(PEGJS) -e window.Parser $< client/javascript.js
+client/parser.js: $(GRAMMAR)
+	$(PEGJS) -e window.Parser $< $@
 
 test: node_modules/nodeunit parsers
 	node ./node_modules/nodeunit/bin/nodeunit server/test
