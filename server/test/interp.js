@@ -30,6 +30,27 @@ function check(expr, expect) {
     };
 };
 
+// Check that we can provoke a 'runtime exception'; that is, something
+// that breaks the interpreter rather than the interpretation. In
+// general these are illegal program constructions, as opposed to
+// operations on illegal values.
+function checkError(expr) {
+    return function(assert) {
+        assert.expect(1);
+        var env = new interp.Environment(interp.builtins);
+        interp_util.runFully(env, expr, function (status, res) {
+            if (typeof(status) === 'string') {
+                if (status === 'complete')
+                    assert.done();
+            }
+            else {
+                // An exception
+                assert.ok(true);
+            }
+        });
+    };
+}
+
 module.exports.preferObjectLiteral
     = check('{foo:"bar"}', {foo:"bar"});
 
@@ -195,3 +216,12 @@ module.exports.lazyBuiltinPassing
 // Test what happens when an exception is thrown by a lazy
 module.exports.lazyThrow
     = check('function foo() { throw "bang"; } var l = lazy(foo()), e; try { l + 1; } catch (ex) { e = ex; } e;', 'bang');
+
+// lazy values cannot depend on themselves ..
+module.exports.blackholeIsIllegal
+    = checkError('var a = lazy(a + 1); a + 1');
+
+// .. unless there is something guarding the recursion, in this case
+// the lazy sequence
+module.exports.guardedLazyValue
+    = check('var ones = lazy([[1], ones].concat()); ones[10]', 1);
