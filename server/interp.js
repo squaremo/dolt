@@ -18,17 +18,18 @@ Context.prototype.succeed = function(val) {
 }
 
 Context.prototype.fail = function(e) {
-    var err = this.errorStack.pop();
-    this.stack = err.stack;
-    this.gotoStack = err.gotoStack;
-    return {cont: err.cont, val: e, counter: ++this.counter};
+    var k = this.errorStack.pop();
+    console.log({FAIL: e, K: k.toString()});
+    return {cont: k, val: e, counter: ++this.counter};
 }
 
 Context.prototype.doGoto = function(val) {
-    var go = this.gotoStack.pop();
-    this.stack = go.stack;
-    this.errorStack = go.errorStack;
-    return {cont: go.cont, val: val, counter: ++this.counter};
+    var k = this.gotoStack.pop();
+    return {cont: k, val: val, counter: ++this.counter};
+}
+
+Context.prototype.clearGoto = function() {
+    this.gotoStack.pop();
 }
 
 Context.prototype.pushCont = function(k) {
@@ -37,19 +38,29 @@ Context.prototype.pushCont = function(k) {
 }
 
 Context.prototype.pushErrorCont = function(k) {
-    this.errorStack.push({
-        cont: k,
-        stack: this.stack.slice(),
-        gotoStack: this.gotoStack.slice()
+    var ctx = this;
+    var stack = ctx.stack.slice();
+    var gotoStack = this.gotoStack.slice();
+    this.errorStack.push(function(e) {
+        ctx.stack = stack;
+        ctx.gotoStack = gotoStack;
+        return k(e);
     });
     return this;
 }
 
+Context.prototype.clearError = function() {
+    this.errorStack.pop();
+}
+
 Context.prototype.pushGotoCont = function(k) {
-    this.gotoStack.push({
-        cont: k,
-        stack: this.stack.slice(),
-        errorStack: this.errorStack.slice()
+    var ctx = this;
+    var stack = ctx.stack.slice();
+    var errorStack = this.errorStack.slice();
+    this.gotoStack.push(function(val) {
+        ctx.stack = stack;
+        ctx.errorStack = errorStack;
+        return k(val);
     });
     return this;
 }
@@ -344,12 +355,20 @@ IUserFunction.prototype.toString = function () {
 
 IUserFunction.prototype.invoke = function (args, env, ctx) {
     var fun = this;
+    var clearedGoto = false;
     return env.evaluateArgs(args, ctx.pushCont(function (evaled_args) {
         var subenv = new Environment(fun.env);
         var params = fun.node.params;
         for (var i = 0; i < params.length; i++)
             subenv.bind(params[i], evaled_args[i]);
-
+        ctx.pushGotoCont(function(val) {
+            clearedGoto = true;
+            return ctx.succeed(val);
+        });
+        ctx.pushCont(function(val) {
+            if (!clearedGoto) ctx.clearGoto();
+            return ctx.succeed(val);
+        });
         return subenv.evaluateStatements(fun.node.elements, ctx);
     }));
 };
@@ -1009,7 +1028,7 @@ Environment.prototype.evaluateLValue = function (node, ctx) {
     if (handler)
         return handler(node, this, ctx);
     else
-        // %%% Originally called the econt directly
+        // %% Originally called the econt directly
         return ctx.fail(new Error(node.type + " not an lvalue"));
 };
 
@@ -1135,6 +1154,13 @@ var evaluate_type = {
         }
     },
 
+    ReturnStatement: function (node, env, ctx) {
+        ctx.pushCont(function(val) {
+            return ctx.doGoto(val);
+        });
+        return env.evaluate(node.value, ctx);
+    },
+
     Function: function (node, env, ctx) {
         var fun = new IUserFunction(node, env);
         if (node.name)
@@ -1144,11 +1170,17 @@ var evaluate_type = {
     },
 
     TryStatement: function (node, env, ctx) {
+        var cleared = false;
         ctx.pushErrorCont(function (err) {
+            cleared = true;
             var katch = node['catch'];
             var subenv = new Environment(env);
             subenv.bind(katch.identifier, err);
             return subenv.evaluateStatements(katch.block.statements, ctx);
+        });
+        ctx.pushCont(function(val) {
+            if (!cleared) ctx.clearError();
+            return ctx.succeed(val);
         });
         return env.evaluateStatements(node.block.statements, ctx);
     },

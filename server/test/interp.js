@@ -29,10 +29,20 @@ module.exports.trivialAddition
     = check('1+2', 3);
 
 module.exports.trivialFunCall
-    = check('function foo(x) { x+1; } foo(42)', 43);
+    = check('function foo(x) { x+1; }; foo(42)', 43);
+
+module.exports.trivialReturn
+    = check('function foo(x) { return x + 1; }; foo(4)', 5);
+
+module.exports.earlyReturn
+    = check('function early(x) { return x + 1; x + 2; }; early(8)', 9);
 
 module.exports.katch
     = check('var ex; try { ex = (function () { throw "bang"; 42; })(); } catch (e) { ex = e; } ex;', 'bang');
+
+module.exports.nestedKatch
+    = check('var ex = 0; try { try { ex = 10;} catch (e) { ex = 42; }; throw 45; } catch (n) { ex = ex + 1; }; ex',
+            11);
 
 module.exports.objConstructorShortcut
     = check('var foo = 1; {foo}', {foo: 1});
