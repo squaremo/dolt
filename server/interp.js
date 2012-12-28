@@ -19,7 +19,6 @@ Context.prototype.succeed = function(val) {
 
 Context.prototype.fail = function(e) {
     var k = this.errorStack.pop();
-    console.log({FAIL: e, K: k.toString()});
     return {cont: k, val: e, counter: ++this.counter};
 }
 
@@ -597,13 +596,22 @@ ILazy.prototype.toString = function () {
 };
 
 ILazy.prototype.force = function (ctx) {
-    this.force = ILazy.forcing;
     var self = this;
+
+    self.force = ILazy.forcing;
+    // Although the first context to visit needs to be treated
+    // specially, putting it in `self.awaiting` simplifies
+    // `ILazy.forcing`
+    self.awaiting = [ctx];
 
     function on_value(val) {
         self.force = ILazy.forced;
         self.producer = null;
         self.value = val;
+        self.awaiting.slice(1) // all but our original
+            .forEach(function(c) { c.online(c.succeed(val)); });
+        self.awaiting = null;
+        ctx.clearError();
         return ctx.succeed(val);
     }
 
@@ -611,19 +619,24 @@ ILazy.prototype.force = function (ctx) {
         self.force = ILazy.error;
         self.producer = null;
         self.error = err;
+        self.awaiting.slice(1)
+            .forEach(function(c) { c.online(c.fail(val)); });
+        self.awaiting = null;
         return ctx.fail(err);
     }
 
     return this.producer(ctx.pushCont(function (val) {
-        ctx.pushCont(on_value);
         ctx.pushErrorCont(on_error);
+        ctx.pushCont(on_value);
         return force(val, ctx);
     }));
 };
 
 ILazy.forcing = function (ctx) {
-    // Or ctx.fail() -- it's a runtime error rather than an exception
-    throw new Error("Lazy value depends on itself.");
+    if (this.awaiting.indexOf(ctx) > -1) {
+        throw new Error("Lazy value depends on itself");
+    }
+    this.awaiting.push(ctx);
 };
 
 ILazy.forced = function (ctx) {
