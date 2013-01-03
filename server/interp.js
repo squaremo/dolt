@@ -633,7 +633,6 @@ var inil = singleton_itype('nil', {
     im_map: continuate(function (args, env) { return inil; }),
     im_concat: continuate(function(args, env) { return inil; }),
     im_where: continuate(function(args, env) { return inil; }),
-    im_toArray: continuate(function (args, env) { return []; }),
 });
 
 var ICons = itype('cons', IValue, function (head, tail) {
@@ -646,7 +645,8 @@ ICons.prototype.toString = function () {
 };
 
 ICons.prototype.renderJSON = function (cont, econt) {
-    return this.im_toArray([], null, function (arr) {
+    var arr = [];
+    return this.addToArray(arr, function () {
         return new IArray(arr).renderJSON(cont, econt);
     }, econt);
 };
@@ -668,12 +668,6 @@ ICons.prototype.getProperty = function (key, cont, econt) {
 ICons.prototype.addToArray = function (arr, cont, econt) {
     arr.push(this.head);
     return this.tail.addToArray(arr, cont, econt);
-};
-
-ICons.prototype.im_toArray = function (args, env, cont, econt) {
-    var res = [];
-    return this.addToArray(res, function () { return tramp(cont, res); },
-                           econt);
 };
 
 function apply_deferred_arg(defarg, env, elem, cont, econt) {
@@ -791,10 +785,6 @@ IArray.prototype.im_where = function (args, env, cont, econt) {
 IArray.prototype.im_concat = function (args, env, cont, econt) {
     return this.toSequence().im_concat(args, env, cont, econt);
 };
-
-IArray.prototype.im_toArray = continuate(function (args, env) {
-    return this.obj;
-});
 
 IArray.prototype.renderJSON = function (cont, econt) {
     var arr = this.obj;
