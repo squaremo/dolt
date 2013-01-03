@@ -72,9 +72,9 @@ module.exports.arrayMap
 module.exports.arrayMapLazy
     = check('var total = 0; function see(n) { total += n; n; }; [1,2,3].map(see(_)); total;', 0);
 
-// Here we force the lazy map with toArray
+// Here we force the whole sequence
 module.exports.arrayMapLazyForced
-    = check('var total = 0; function see(n) { total += n; n; }; [1,2,3].map(see(_)).toArray(); total', 6);
+    = check('var total = 0; function see(n) { total += n; n; }; [1,2,3].map(see(_))[2]; total', 6);
 
 // Here we force only the head of a lazy map
 module.exports.arrayMapLazyForcedHead
@@ -94,15 +94,15 @@ module.exports.arrayWhere
 // Here we discard the result of a lazy where, so the where expression
 // should not be evaluated
 module.exports.arrayWhereLazy
-    = check('var total = 0; function see(n) { total += n; 10 < n; }; [5,15,20,5].where(see(_)); total;', 0);
+    = check('var total = 0; function see(n) { total += n; 10 < n; }; [5,15,5,20].where(see(_)); total;', 0);
 
-// Here we force the lazy where with toArray
+// Here we force the whole sequence
 module.exports.arrayWhereLazyForced
-    = check('var total = 0; function see(n) { total += n; 10 < n; }; [5,15,20,5].where(see(_)).toArray(); total;', 45);
+    = check('var total = 0; function see(n) { total += n; 10 < n; }; [5,15,5,20].where(see(_))[1]; total;', 45);
 
 // Here we force only the head of a lazy where
 module.exports.arrayWhereLazyForcedHead
-    = check('var total = 0; function see(n) { total += n; 10 < n; }; [5,15,20,5].where(see(_))[0]; total;', 20);
+    = check('var total = 0; function see(n) { total += n; 10 < n; }; [5,15,5,20].where(see(_))[0]; total;', 20);
 
 module.exports.arrayWhereProperties
     = check('[{foo:5},{foo:15}].where(10 < foo)', [{foo:15}]);
