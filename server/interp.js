@@ -494,25 +494,16 @@ ILazy.prototype.renderJSON = function (cont, econt) {
     }, econt);
 };
 
-// Declare some lazy methods (i.e. methods that yield an ILazy that
-// when forced, force the underlying object in turn and invoke the
-// method on it).
-ILazy.lazyMethods = function (constr /* , names ... */) {
-    function lazyMethod(name) {
-        constr.prototype[name] = continuate(function (/* ... */) {
-            var orig_lazy = this;
-            var args = Array.prototype.slice.call(arguments);
-            return new constr(function (cont, econt) {
-                return orig_lazy.force(function (val) {
-                    args.push(cont, econt);
-                    return val[name].apply(val, args);
-                });
-            });
-        });
-    }
-
-    for (var i = 1; i < arguments.length; i++)
-        lazyMethod(arguments[i]);
+// Methods on a lazy are deferred, i.e. they yield a lazy that when
+// forced, forcesthe underlying object in turn and invokes the method
+// on it.
+ILazy.prototype.invokeMethod = function (name, args, env, cont, econt) {
+    var self = this;
+    return tramp(cont, new ILazy(function (cont, econt) {
+        return self.force(function (val) {
+            return val.invokeMethod(name, args, env, cont, econt);
+        }, econt);
+    }));
 }
 
 ILazy.prototype.toString = function () {
@@ -594,8 +585,6 @@ ILazy.error = function (cont, econt) {
 var ILazySeq = itype('lazy sequence', ILazy, function (producer) {
     this.producer = producer;
 });
-
-ILazy.lazyMethods(ILazySeq, 'im_map', 'im_where', 'im_concat');
 
 ILazySeq.range = function (from, to, step) {
     from = IValue.to_js(from);
