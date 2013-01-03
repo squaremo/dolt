@@ -582,23 +582,6 @@ ILazy.error = function (cont, econt) {
 
 // Sequences
 
-var ILazySeq = itype('lazy sequence', ILazy, function (producer) {
-    this.producer = producer;
-});
-
-ILazySeq.range = function (from, to, step) {
-    from = IValue.to_js(from);
-    to = IValue.to_js(to);
-    step = step && IValue.to_js(step) || 1;
-
-    return new ILazySeq(continuate(function () {
-        if (step * from > step * to)
-            return inil;
-        else
-            return new ICons(from, ILazySeq.range(from + step, to, step));
-    }));
-};
-
 var inil = singleton_itype('nil', {
     truthy: function () { return false; },
     toString: function () { return '[]'; },
@@ -691,7 +674,7 @@ function apply_deferred_arg(defarg, env, elem, cont, econt) {
 
 ICons.prototype.im_map = continuate(function (args, env) {
     var self = this;
-    return new ILazySeq(function (cont, econt) {
+    return new ILazy(function (cont, econt) {
         return apply_deferred_arg(args, env, self.head, function (head) {
             return self.tail.invokeMethod('map', args, env, function (tail) {
                 return tramp(cont, new ICons(head, tail));
@@ -702,7 +685,7 @@ ICons.prototype.im_map = continuate(function (args, env) {
 
 ICons.prototype.im_where = continuate(function(args, env) {
     var self = this;
-    return new ILazySeq(function (cont, econt) {
+    return new ILazy(function (cont, econt) {
         return apply_deferred_arg(args, env, self.head, function (pass) {
             return truthy(pass, function (pass) {
                 return self.tail.invokeMethod('where', args, env,
@@ -723,7 +706,7 @@ ICons.prototype.im_where = continuate(function(args, env) {
 // concat [h:t1]:t2 = h:(concat [t1]:t2)
 ICons.prototype.im_concat = continuate(function (args, env) {
     function concat(head, tail) {
-        return new ILazySeq(function (cont, econt) {
+        return new ILazy(function (cont, econt) {
             return force(head, function (head) {
                 head = head.toSequence();
                 if (head === inil)
@@ -737,6 +720,17 @@ ICons.prototype.im_concat = continuate(function (args, env) {
 
     return concat(this.head, this.tail);
 });
+
+function range(from, to, step) {
+    step = step || 1;
+
+    return new ILazy(continuate(function () {
+        if (step * from > step * to)
+            return inil;
+        else
+            return new ICons(from, range(from + step, to, step));
+    }));
+}
 
 
 // Arrays
@@ -1212,7 +1206,7 @@ Environment.prototype.evaluate = function (node, cont, econt) {
 var builtins = new Environment();
 builtins.bind('nil', inil);
 builtins.bind('undefined', iundefined);
-builtins.bind('range', builtin(ILazySeq.range));
+builtins.bind('range', builtin(range));
 
 builtins.bind('callcc', strict_builtin(function (args, cont, econt) {
     // Wrap the original continuation in a callable function
