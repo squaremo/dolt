@@ -102,8 +102,8 @@ IValue.prototype.invokeMethod = function (name, args, env, cont, econt) {
                                       + ' has no method "' + name + '"'));
 };
 
-IValue.prototype.renderJSON = function (cont, econt) {
-    return tramp(cont, this.toJSValue());
+IValue.prototype.renderJSON = function (callback) {
+    return this.toJSValue();
 };
 
 function itype(name, parent, constr) {
@@ -128,7 +128,7 @@ var iundefined = singleton_itype('undefined', {
     truthy: function () { return false; },
     toString: function () { return 'undefined'; },
     toJSValue: function () { return undefined; },
-    renderJSON: continuate(function () { return {'!': 'undefined'}; }),
+    renderJSON: function () { return {'!': 'undefined'}; },
 });
 
 // booleans
@@ -262,8 +262,10 @@ IValue.to_js = function (val) {
 // type.  Because of this, we need to encode IObject property names
 // that might clash.  This is done by adding an extra '!' char to an
 // property name consisting of only '!' chars.
-IValue.renderJSON = function (val, cont, econt) {
-    return IValue.from_js(val).renderJSON(cont, econt);
+//
+// See ILazy.prototype.renderJSON for the purpose of the callback.
+IValue.renderJSON = function (val, callback) {
+    return IValue.from_js(val).renderJSON(callback);
 };
 
 // Decode the JSON representation of a value back into the
@@ -435,32 +437,22 @@ IObject.prototype.invokeMethod = function (name, args, env, cont, econt) {
 
 IObject.encoded_property_name_re = /^!+$/;
 
-IObject.prototype.renderJSON = function (cont, econt) {
+IObject.prototype.renderJSON = function (callback) {
     var obj = this.obj;
     var res = {};
     var props = [];
 
-    // First we need to collect the property keys so that we can
-    // iterate over them below
-    for (var p in obj)
-        if (hasOwnProperty(obj, p))
-            props.push(p);
+    for (var p in obj) {
+        if (hasOwnProperty(obj, p)) {
+            var val = obj[p];
+            if (IObject.encoded_property_name_re.test(p))
+                p = '!' + p;
 
-    function do_props(i) {
-        if (i == props.length)
-            return tramp(cont, res);
-
-        return IValue.renderJSON(obj[props[i]], function (json) {
-            var enc_prop = props[i];
-            if (IObject.encoded_property_name_re.test(enc_prop))
-                enc_prop = '!' + enc_prop;
-
-            res[enc_prop] = json;
-            return do_props(i + 1);
-        }, econt);
+            res[p] = IValue.renderJSON(val, callback);
+        }
     }
 
-    return do_props(0);
+    return res;
 };
 
 IObject.decodeJSON = function (json) {
@@ -487,12 +479,6 @@ IObject.decodeJSON = function (json) {
 var ILazy = itype('lazy', IValue, function (producer) {
     this.producer = producer;
 });
-
-ILazy.prototype.renderJSON = function (cont, econt) {
-    return this.force(function (val) {
-        return val.renderJSON(cont, econt);
-    }, econt);
-};
 
 // Methods on a lazy are deferred, i.e. they yield a lazy that when
 // forced, forcesthe underlying object in turn and invokes the method
@@ -580,14 +566,57 @@ ILazy.error = function (cont, econt) {
     return tramp(econt, this.error);
 };
 
+ILazy.next_json_id = 0;
+
+// render the lazy to JSON.  If the ILazy has not been forced yet,
+// this returns the stub JSON for the ILazy, and later calls the
+// callback.  The callback takes (id, err, json), where:
+// - id is the id provided in the stub JSON.
+// - err is an error, or falsy if the ILazy was forced successfully.
+// - json is the JSON for the forced value.
+ILazy.prototype.renderJSON = function (callback) {
+    // Can we promptly return the forced value/error?
+    if ('value' in this)
+        return IValue.renderJSON(this.value, callback);
+
+    if ('error' in this)
+        throw this.error;
+
+    // No, so allocate an id and asynchronously force
+    if (!this.id)
+        this.id = ILazy.next_json_id++;
+
+    if (callback) {
+        var self = this;
+        process.nextTick(function () {
+            oline(self.force(function (val) {
+                callback(self.id, null, IValue.renderJSON(val, callback));
+            }, function (err) {
+                callback(self.id, err);
+            }));
+        });
+    }
+
+    return { '!': 'lazy', id: this.id };
+};
+
+json_decoder.lazy = function (json) {
+    // The JSON form of an ILazy does not record the producer, so we
+    // can't faithfully reconstruct the ILazy.  In other words, we
+    // cannot freeze and thaw an ongoing computation.
+
+    return new ILazy(function (cont, econt) {
+        return tramp(econt, new Error("discarded lazy"));
+    });
+};
+
 // Sequences
 
 var inil = singleton_itype('nil', {
     truthy: function () { return false; },
     toString: function () { return '[]'; },
     getProperty: continuate(function (key) { return iundefined; }),
-    addToArray: continuate(function (arr) {}),
-    renderJSON: continuate(function() { return []; }),
+    renderJSON: function() { return []; },
     toSequence: function() { return this; },
 
     im_map: continuate(function (args, env) { return inil; }),
@@ -604,11 +633,17 @@ ICons.prototype.toString = function () {
     return '[' + IValue.from_js(this.head) + ' | ' + this.tail + ']';
 };
 
-ICons.prototype.renderJSON = function (cont, econt) {
-    var arr = [];
-    return this.addToArray(arr, function () {
-        return new IArray(arr).renderJSON(cont, econt);
-    }, econt);
+ICons.prototype.renderJSON = function (callback) {
+    return {
+        '!': 'cons',
+        head: IValue.renderJSON(this.head, callback),
+        tail: IValue.renderJSON(this.tail, callback)
+    };
+};
+
+json_decoder.cons = function (json) {
+    return new ICons(IValue.decodeJSON(json.head),
+                     IValue.decodeJSON(json.tail));
 };
 
 ICons.prototype.toSequence = function () {
@@ -628,13 +663,6 @@ ICons.prototype.getProperty = function (key, cont, econt) {
     else {
         return tramp(cont, iundefined);
     }
-};
-
-ICons.prototype.addToArray = function (arr, cont, econt) {
-    arr.push(this.head);
-    return force(this.tail, function (tail) {
-        return tail.addToArray(arr, cont, econt);
-    }, econt);
 };
 
 function apply_deferred_arg(defarg, env, elem, cont, econt) {
@@ -764,21 +792,14 @@ IArray.prototype.im_concat = function (args, env, cont, econt) {
     return this.toSequence().im_concat(args, env, cont, econt);
 };
 
-IArray.prototype.renderJSON = function (cont, econt) {
-    var arr = this.obj;
+IArray.prototype.renderJSON = function (callback) {
     var res = [];
+    var arr = this.obj;
 
-    function do_elems(i) {
-        if (i === arr.length)
-            return tramp(cont, res);
+    for (var i = 0; i < arr.length; i++)
+        res.push(IValue.renderJSON(arr[i], callback));
 
-        return IValue.renderJSON(arr[i], function (json) {
-            res.push(json);
-            return do_elems(i + 1);
-        }, econt);
-    }
-
-    return do_elems(0);
+    return res;
 };
 
 IArray.decodeJSON = function (json) {
@@ -800,17 +821,12 @@ ITable.prototype.getProperty = continuate(function (key) {
         return iundefined;
 });
 
-ITable.prototype.renderJSON = function (cont, econt) {
-    var self = this;
-    return IValue.renderJSON(self.data, function (data) {
-        return IValue.renderJSON(self.columns, function (columns) {
-            return tramp(cont, {
-                '!': 'table',
-                data: data,
-                columns: columns
-            });
-        });
-    });
+ITable.prototype.renderJSON = function (callback) {
+    return {
+        '!': 'table',
+        data: IValue.renderJSON(this.data, callback),
+        columns: IValue.renderJSON(this.data, callback)
+    };
 };
 
 json_decoder.table = function (json) {
@@ -826,7 +842,8 @@ function Environment(parent, frame) {
     this.parent = parent;
 }
 
-Environment.prototype.run = function (p, cont, econt, dump_parse) {
+// This is just for debugging
+Environment.prototype.runSimple = function (p, cont, econt, dump_parse) {
     try {
         p = parser.parse(p);
         if (dump_parse)
@@ -840,12 +857,21 @@ Environment.prototype.run = function (p, cont, econt, dump_parse) {
     oline(this.evaluate(p, cont, econt));
 };
 
-Environment.prototype.runForJSON = function (p, cont, econt, dump_parse) {
-    this.run(p, function (res) {
-        oline(IValue.renderJSON(res, function (json) {
-            cont(res, json);
-        }, econt));
-    }, econt, dump_parse);
+// Run an expression, binding the result to a variable, and returning
+// the result as JSON.  See ILazy.prototype.renderJSON for details of
+// the callback.
+Environment.prototype.run = function (varname, p, callback, dump_parse) {
+    p = parser.parse(p);
+    if (dump_parse)
+        console.log(JSON.stringify(p, null, "  "));
+
+    var self = this;
+    var lazy = new ILazy(function (cont, econt) {
+        return self.evaluate(p, cont, econt);
+    });
+
+    this.bind(varname, lazy);
+    return lazy.renderJSON(callback);
 };
 
 Environment.prototype.bind = function (symbol, val) {
@@ -1246,3 +1272,4 @@ module.exports.Environment = Environment;
 module.exports.builtins = builtins;
 module.exports.builtin = builtin;
 module.exports.promised_builtin = promised_builtin;
+module.exports.hasOwnProperty = hasOwnProperty;

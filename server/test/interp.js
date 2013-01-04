@@ -1,23 +1,31 @@
 'use strict';
 
 var interp = require('../interp');
+var interp_util = require('../interp_util');
 
 function check(expr, expect) {
     return function (assert) {
         assert.expect(1);
         var env = new interp.Environment(interp.builtins);
-        env.runForJSON(expr, function (res, json) {
-            // Compare JSON strings, because node's assert.deepEqual
-            // does not check for strict equality
-            assert.equal(JSON.stringify(json), JSON.stringify(expect));
-            assert.done();
-        }, function (err) {
-            // nodeunit doesn't do a good job of presenting exceptions
-            // hat lack a stack trace.
-            if (!err.stack)
-                err = new Error(err.message);
+        interp_util.runFully(env, 'res', expr, function (status, res) {
+            if (typeof(status) === 'string') {
+                if (status === 'complete') {
+                    res = interp_util.resolveSequences(res);
 
-            throw err;
+                    // Compare JSON strings, because node's assert.deepEqual
+                    // does not check for strict equality
+                    assert.equal(JSON.stringify(res), JSON.stringify(expect));
+                    assert.done();
+                }
+            }
+            else {
+                // nodeunit doesn't do a good job of presenting exceptions
+                // that lack a stack trace.
+                if (!status.stack)
+                    status = new Error(status.message);
+
+                throw status;
+            }
         });
     };
 };

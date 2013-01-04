@@ -10,6 +10,7 @@ var fs = promisify.object({
     readdir: promisify.cb_func()
 })(require('fs'));
 var interp = require('./interp');
+var interp_util = require('./interp_util');
 
 // The environment exposed to evaluated expressions.  We'll leave
 // 'table' as the entry point to the stream operators, e.g.,
@@ -117,17 +118,25 @@ Session.prototype.eval = function (expr) {
         self.saveHistory();
 
         var d = when.defer();
-        self.env.runForJSON(expr, function (val, json) {
-            self.env.bind(history_entry.variable, val);
-            history_entry.in_progress = false;
-            history_entry.result = json;
-            self.saveHistory();
-            d.resolve(history_entry);
-        }, function (err) {
-            history_entry.in_progress = false;
-            history_entry.error = err.toString();
-            self.saveHistory();
-            d.resolve(history_entry);
+
+        interp_util.runFully(self.env, history_entry.variable, expr,
+                             function (status, json) {
+            if (status === 'incomplete') {
+                history_entry.result = interp_util.resolveSequences(json);
+                self.saveHistory();
+            }
+            else if (status === 'complete') {
+                history_entry.in_progress = false;
+                history_entry.result = interp_util.resolveSequences(json);
+                self.saveHistory();
+                d.resolve(history_entry);
+            }
+            else {
+                history_entry.in_progress = false;
+                history_entry.error = status.toString();
+                self.saveHistory();
+                d.resolve(history_entry);
+            }
         });
 
         return d.promise;
