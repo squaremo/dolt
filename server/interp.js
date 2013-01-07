@@ -337,18 +337,6 @@ function deferred_builtin(fun) {
     return res;
 }
 
-// A builtin that gets its arguments evaluated, but also receives the
-// continuations.
-function strict_builtin(fun) {
-    var res = new IBuiltinFunction();
-    res.invoke = function (args, env, cont, econt) {
-        return env.evaluateArgs(args, function (evaled_args) {
-            return fun(evaled_args, cont, econt);
-        }, econt);
-    };
-    return res;
-}
-
 // The simplest form of builtin: Gets its arguments evaluated, and
 // returns a simple result.
 function builtin(fun) {
@@ -1234,18 +1222,6 @@ builtins.bind('nil', inil);
 builtins.bind('undefined', iundefined);
 builtins.bind('range', builtin(range));
 
-builtins.bind('callcc', strict_builtin(function (args, cont, econt) {
-    // Wrap the original continuation in a callable function
-    var wrapped_cont = strict_builtin(function (args2, cont2, econt2) {
-        // ... that takes a single argument and calls the original
-        // continuation with it.
-        return tramp(cont, args2[0]);
-    });
-
-    // Call the provided continuation recipient with a single argument...
-    return invoke(args[0], [wrapped_cont], cont, econt);
-}));
-
 builtins.bind('lazy', deferred_builtin(function (args, env, cont, econt) {
     return tramp(cont, new ILazy(function (cont2, econt2) {
         return env.evaluateForced(args[0], cont2, econt2);
@@ -1264,8 +1240,6 @@ function run(p) {
 }
 
 //builtins.bind('print', builtin(function (x) { console.log(x); }));
-//run("print(callcc(function (c) { c('Hello'); }))");
-//run("var x; callcc(function (c) { x = c; }); print('Hello'); x();");
 
 module.exports.IValue = IValue;
 module.exports.Environment = Environment;
