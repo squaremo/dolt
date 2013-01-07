@@ -183,3 +183,8 @@ module.exports.stringInterpolateEscapesInLiteral
 
 module.exports.stringInterpolateEscapesInExpr
     = check('"foo-{(\\{foo: \\"baz\\"\\}).foo}-bar"', 'foo-baz-bar');
+
+// check that lazies are handled correctly by builtins
+
+module.exports.lazyBuiltinPassing
+    = check('range(lazy(0), lazy(2))', [0,1,2]);

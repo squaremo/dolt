@@ -310,7 +310,9 @@ IUserFunction.prototype.toString = function () {
 
 IUserFunction.prototype.invoke = function (args, env, cont, econt) {
     var fun = this;
-    return env.evaluateArgs(args, function (evaled_args) {
+
+    // User functions don't force their arguments
+    return evaluateMulti(env.evaluate.bind(env), args, function (evaled_args) {
         var subenv = new Environment(fun.env);
         var params = fun.node.params;
         for (var i = 0; i < params.length; i++)
@@ -342,8 +344,14 @@ function deferred_builtin(fun) {
 function builtin(fun) {
     var res = new IBuiltinFunction();
     res.invoke = function (args, env, cont, econt) {
-        return env.evaluateArgs(args, function (evaled_args) {
+        return evaluateMulti(env.evaluateForced.bind(env), args,
+                             function (evaled_args) {
             try {
+                // evaluateForced will have left us with IValues, so
+                // convert to JS values
+                for (var i = 0; i < args.length; i++)
+                    evaled_args[i] = IValue.to_js(evaled_args[i]);
+
                 return tramp(cont, fun.apply(null, evaled_args));
             }
             catch (e) {
@@ -359,8 +367,14 @@ function builtin(fun) {
 function promised_builtin(fun) {
     var res = new IBuiltinFunction();
     res.invoke = function (args, env, cont, econt) {
-        return env.evaluateArgs(args, function (evaled_args) {
+        return evaluateMulti(env.evaluateForced.bind(env), args,
+                             function (evaled_args) {
             try {
+                // evaluateForced will have left us with IValues, so
+                // convert to JS values
+                for (var i = 0; i < args.length; i++)
+                    evaled_args[i] = IValue.to_js(evaled_args[i]);
+
                 fun.apply(null, evaled_args).then(function (val) {
                     oline(cont(val));
                 }, function (err) {
@@ -891,21 +905,21 @@ Environment.prototype.evaluateForced = function (node, cont, econt) {
     }, econt);
 };
 
-Environment.prototype.evaluateArgs = function (nodes, cont, econt) {
-    var env = this;
+// Evaluate an array of expressions using the passed evaluation function
+function evaluateMulti(evaluator, items, cont, econt) {
     var evaled = [];
 
-    function do_args(i) {
-        if (i == nodes.length)
+    function do_items(i) {
+        if (i == items.length)
             return tramp(cont, evaled);
 
-        return env.evaluate(nodes[i], function (a) {
+        return evaluator(items[i], function (a) {
             evaled.push(a);
-            return do_args(i + 1);
+            return do_items(i + 1);
         }, econt);
     }
 
-    return do_args(0);
+    return do_items(0);
 }
 
 Environment.prototype.evaluateStatements = function (stmts, cont, econt) {
@@ -1064,20 +1078,10 @@ var evaluate_type = {
     },
 
     StringPattern: function (node, env, cont, econt) {
-        var elems = node.elements;
-        var pieces = [];
-
-        function do_piece(i) {
-            if (i === elems.length)
-                return tramp(cont, pieces.join(''));
-
-            return env.evaluateForced(elems[i], function (piece) {
-                pieces.push(String(piece));
-                return do_piece(i + 1);
-            }, econt);
-        }
-
-        return do_piece(0);
+        return evaluateMulti(env.evaluateForced.bind(env), node.elements,
+                             function (pieces) {
+            return tramp(cont, pieces.join(''));
+        }, econt);
     },
 
     FunctionCall: function (node, env, cont, econt) {
@@ -1166,20 +1170,8 @@ var evaluate_type = {
     },
 
     ArrayLiteral: function (node, env, cont, econt) {
-        var elems = node.elements;
-        var res = [];
-
-        function do_elems(i) {
-            if (i == elems.length)
-                return tramp(cont, res);
-
-            return env.evaluate(elems[i], function (val) {
-                res.push(val);
-                return do_elems(i + 1);
-            }, econt);
-        }
-
-        return do_elems(0);
+        return evaluateMulti(env.evaluate.bind(env), node.elements, cont,
+                             econt);
     },
 
     ComprehensionMapExpression: evaluate_comprehension,
