@@ -1,7 +1,7 @@
 PEGJS:=./node_modules/pegjs/bin/pegjs
 GRAMMAR:=server/grammar.pegjs
 
-.PHONY: parsers test
+.PHONY: parsers test start-server clean-sessions
 
 parsers: node_modules/pegjs server/parser.js client/parser.js
 
@@ -16,3 +16,6 @@ test: node_modules/nodeunit parsers
 
 start-server: parsers
 	(cd server; node ./server.js)
+
+clean-sessions:
+	rm /tmp/session-*.json
