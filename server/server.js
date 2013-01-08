@@ -45,16 +45,21 @@ app.get('/(index(.html)?)?', function(req, res) {
 app.post('/new', function(req, res) {
     var session = Session.newSession();
     res.writeHead(303, 'Session created', {'Location': '/#' + session.id});
-    session.saveHistory().then(function() {
+    session.saveState().then(function() {
         mu.compileAndRender('new.html', {session: session.id}).pipe(res);
     });
 });
 
 sockjs.on('connection', function(connection) {
+
+    function getHistory(state) {
+        return state.history;
+    }
+
     connection.once('data', function (id) {
         var session = Session.fromId(id);
         connection.on('data', handler(session, connection));
-        respond(connection, Session.stringify(session.history));
+        respond(connection, Session.stringify(session.state.then(getHistory)));
     });
 });
 

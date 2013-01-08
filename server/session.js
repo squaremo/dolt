@@ -3,6 +3,7 @@
 var when = require('when');
 var uuid = require('node-uuid');
 var misc = require('./misc');
+var util = require('util');
 var promisify = require('promisify');
 var fs = promisify.object({
     writeFile: promisify.cb_func(),
@@ -22,25 +23,29 @@ var builtins = {
 
 function Session(id) {
     this.id = id;
-    this.file = '/tmp/history-' + id + '.json';
-    this.env = new interp.Environment(interp.builtins);
-    for (var p in builtins) { this.env.bind(p, builtins[p]); }
+    this.file = '/tmp/session-' + id + '.json';
+    this.toplevel = new interp.Environment(interp.builtins);
+    for (var p in builtins) { this.toplevel.bind(p, builtins[p]); }
 
     var self = this;
-    this.history = fs.readFile(this.file).then(function (data) {
+    this.state = fs.readFile(this.file).then(function (data) {
         return JSON.parse(data);
     }, function (err) {
         if (err.code === 'ENOENT')
-            return [];
+            return {history: [], global: {}};
         else
             throw err;
-    }).then(function (history) {
+    }).then(function (state) {
+        var history = state.history;
         for (var i = 0; i < history.length; i++)
             if (history[i].result)
-                self.env.bind(history[i].variable,
-                              interp.IValue.decodeJSON(history[i].result));
-
-        return history;
+                self.toplevel.bind(history[i].variable,
+                                   interp.IValue.decodeJSON(history[i].result));
+        // This relies on the environment mutating the frame given it,
+        // so that we can have it in the state *and* as the global
+        // object.
+        self.env = new GlobalEnvironment(self.toplevel, state.global);
+        return state;
     });
 }
 
@@ -55,39 +60,39 @@ Session.stringify = function (data) {
     });
 };
 
-Session.prototype.saveHistory = function () {
-    if (this.saving_history) {
+Session.prototype.saveState = function () {
+    if (this.saving_state) {
         // We were already saving the history.  Mark that it needs
         // saving again.
-        this.saving_history = "again";
+        this.saving_state = "again";
         return;
     }
 
-    this.saving_history = true;
+    this.saving_state = true;
 
     var self = this;
-    function writeHistory() {
-        return Session.stringify(self.history).then(function (history) {
-            return fs.writeFile(self.file, history);
+    function writeState() {
+        return Session.stringify(self.state).then(function (stateStr) {
+            return fs.writeFile(self.file, stateStr);
         }).then(function () {
-            if (self.saving_history === "again") {
-                self.saving_history = true;
-                writeHistory();
+            if (self.saving_state === "again") {
+                self.saving_state = true;
+                writeState();
             }
             else {
-                self.saving_history = false;
+                self.saving_state = false;
             }
         });
     }
 
-    return writeHistory();
+    return writeState();
 }
 
 Session.enumSessions = function () {
     return fs.readdir('/tmp').then(function(files) {
         var ids = [];
         files.forEach(function(path) {
-            var match = /^history-(.+)\.json$/.exec(path);
+            var match = /^session-(.+)\.json$/.exec(path);
             if (match) { ids.push({id: match[1]}); }
         });
         return ids;
@@ -106,7 +111,8 @@ Session.fromId = function (id) {
 Session.prototype.eval = function (expr) {
     var self = this;
 
-    return this.history.then(function (history) {
+    return this.state.then(function (state) {
+        var history = state.history;
         var history_entry = {
             expr: expr,
             in_progress: true,
@@ -115,26 +121,26 @@ Session.prototype.eval = function (expr) {
 
         history.push(history_entry);
         console.log("Saving: " + self.id);
-        self.saveHistory();
+        self.saveState();
 
         var d = when.defer();
 
-        interp_util.runFully(self.env, history_entry.variable, expr,
-                             function (status, json) {
+        interp_util.runFully(self.env, expr, function (status, json) {
+            self.toplevel.bind(history_entry.variable, json); // %% in error case too?
             if (status === 'incomplete') {
                 history_entry.result = interp_util.resolveSequences(json);
-                self.saveHistory();
+                self.saveState();
             }
             else if (status === 'complete') {
                 history_entry.in_progress = false;
                 history_entry.result = interp_util.resolveSequences(json);
-                self.saveHistory();
+                self.saveState();
                 d.resolve(history_entry);
             }
             else {
                 history_entry.in_progress = false;
                 history_entry.error = status.toString();
-                self.saveHistory();
+                self.saveState();
                 d.resolve(history_entry);
             }
         });
@@ -144,3 +150,8 @@ Session.prototype.eval = function (expr) {
 };
 
 module.exports = Session;
+
+function GlobalEnvironment(toplevel, global) {
+    GlobalEnvironment.super_.call(this, toplevel, global);
+}
+util.inherits(GlobalEnvironment, interp.Environment);

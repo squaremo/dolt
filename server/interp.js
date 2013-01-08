@@ -859,10 +859,9 @@ Environment.prototype.runSimple = function (p, cont, econt, dump_parse) {
     oline(this.evaluate(p, cont, econt));
 };
 
-// Run an expression, binding the result to a variable, and returning
-// the result as JSON.  See ILazy.prototype.renderJSON for details of
-// the callback.
-Environment.prototype.run = function (varname, p, callback, dump_parse) {
+// Run an expression, and return the result as JSON.  See
+// ILazy.prototype.renderJSON for details of the callback.
+Environment.prototype.run = function (p, callback, dump_parse) {
     p = parser.parse(p);
     if (dump_parse)
         console.log(JSON.stringify(p, null, "  "));
@@ -872,7 +871,6 @@ Environment.prototype.run = function (varname, p, callback, dump_parse) {
         return self.evaluate(p, cont, econt);
     });
 
-    this.bind(varname, lazy);
     return lazy.renderJSON(callback);
 };
 
