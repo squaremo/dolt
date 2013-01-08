@@ -108,18 +108,26 @@ Session.fromId = function (id) {
     return new Session(id);
 }
 
-Session.prototype.eval = function (expr) {
+Session.prototype.eval = function (expr, variable) {
     var self = this;
+
+    function findOrAppendEntry(variable, list) {
+        if (variable) {
+            for (var i = 0; i < list.length; i++)
+                if (list[i].variable === variable) return list[i];
+        }
+
+        var entry = {variable: '$' + (list.length + 1)}; // just to be one-based
+        list.push(entry);
+        return entry;
+    }
 
     return this.state.then(function (state) {
         var history = state.history;
-        var history_entry = {
-            expr: expr,
-            in_progress: true,
-            variable: '$' + (history.length + 1)
-        };
+        var history_entry = findOrAppendEntry(variable, history);
+        history_entry.in_progress = true;
+        history_entry.expr = expr;
 
-        history.push(history_entry);
         console.log("Saving: " + self.id);
         self.saveState();
 

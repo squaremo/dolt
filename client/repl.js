@@ -1,24 +1,70 @@
 $(function() {
     var repl = $('#repl');
-    var current;
     var eval_uri = "/eval";
 
     var spin = $('<img/>').attr('src', 'ajax-loader.gif');
-    var form = $('<form/>').addClass('prompt')
-        .append('<label/>')
-        .append('<input/>');
 
+    function Entry(record) {
+        this.input = $('<section/>');
+        this.output = $('<section/>');        
+        this.node = $('<section/>').addClass('entry')
+            .append(this.input)
+            .append(this.output);
+        this.expr = '';
+
+        this.blur = function() {
+            if (this.cursor) this.expr = this.cursor.val();
+            var pretty = renderExpression(this.expr);
+            this.input.empty();
+            this.input.append(pretty);
+            this.cursor = null;
+        };
+
+        this.focus = function() {
+            var cursor = this.cursor = $('<input/>');
+            cursor.val(this.expr);
+
+            var form = $('<form/>').addClass('prompt')
+                .append('<label/>')
+                .append(cursor);
+            
+            var self = this;
+
+            function evaluate() {
+                self.blur();
+                var waiting = spin.clone();
+                self.output.append(waiting);
+
+                var toEval = {expr: self.expr};
+                if (self.variable) { toEval.variable = self.variable; }
+
+                sendToBeEvaluated(toEval, function (result) {
+                    fillOutputSection(self.output, result);
+                    self.variable = result.variable;
+                });
+                return false;
+            }
+            
+            form.submit(evaluate);
+            this.input.empty();
+            this.input.append(form);
+            cursor.focus();
+        };
+
+        if (record) {
+            if (record.in_progress)
+                this.output.text('Hang on, still thinking about this one...');
+            else
+                fillOutputSection(this.output, record);
+            this.expr = record.expr;
+            this.variable = record.variable;
+            this.blur();
+        }
+    }
+    
     function catastrophe(error) {
         console.error(error);
         $('#errors').append($('<h3/>').addClass('fatal').text(error));
-    }
-
-    function prompt() {
-        current = form.clone();
-        current.submit(evaluate);
-        repl.append(current);
-        current.find('input').focus();
-        return false;
     }
 
     function renderExpression(expr) {
@@ -55,18 +101,27 @@ $(function() {
         }
     }
 
-    function evaluate() {
-        var expr = current.find('input').val();
-        current.replaceWith(renderExpression(expr));
+    var HISTORY = [];
+    var current;
 
-        var output = $('<section/>').append(spin.clone());
-        repl.append(output);
-
-        sendToBeEvaluated(expr, function (result) {
-            fillOutputSection(output, result);
+    function appendEntry(item) {
+        var entry = new Entry(item);
+        var num = HISTORY.length;
+        entry.input.click(function() {
+            if (current !== undefined) HISTORY[current].blur();
+            current = num;
+            HISTORY[num].focus();
         });
+        HISTORY.push(entry);
+        repl.append(entry.node);
+        return entry;
+    }
 
-        return prompt();
+    function prompt() {
+        var next = appendEntry();
+        next.focus();
+        current = HISTORY.length - 1;
+        return false;
     }
 
     var CONN;
@@ -97,17 +152,15 @@ $(function() {
 
     function sendToBeEvaluated(exp, k) {
         KS.push(k);
-        CONN.send(exp);
+        CONN.send(JSON.stringify(exp));
+        if (current === HISTORY.length - 1) {
+            prompt();
+        }
     }
 
     function loadHistory(history) {
         for (var i = 0; i < history.length; i++) {
-            repl.append(renderExpression(history[i].expr));
-            var output = $('<section/>').appendTo(repl);
-            if (history[i].in_progress)
-                output.text('Hang on, still thinking about this one...');
-            else
-                fillOutputSection(output, history[i]);
+            appendEntry(history[i]);
         }
     }
 

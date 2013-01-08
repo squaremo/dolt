@@ -65,7 +65,8 @@ sockjs.on('connection', function(connection) {
 
 function handler(session, connection) {
     return function(data) {
-        respond(connection, Session.stringify(session.eval(data)));
+        var req = JSON.parse(data);
+        respond(connection, Session.stringify(session.eval(req.expr, req.variable)));
     };
 }
 
