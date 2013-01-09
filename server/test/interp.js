@@ -191,3 +191,7 @@ module.exports.stringInterpolateEscapesInExpr
 
 module.exports.lazyBuiltinPassing
     = check('range(lazy(0), lazy(2))', [0,1,2]);
+
+// Test what happens when an exception is thrown by a lazy
+module.exports.lazyThrow
+    = check('function foo() { throw "bang"; } var l = lazy(foo()), e; try { l + 1; } catch (ex) { e = ex; } e;', 'bang');
