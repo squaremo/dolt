@@ -58,7 +58,13 @@ module.exports.trivialAddition
     = check('1+2', 3);
 
 module.exports.trivialFunCall
-    = check('function foo(x) { x+1; } foo(42)', 43);
+    = check('function foo(x) { x+1; }; foo(42)', 43);
+
+module.exports.trivialReturn
+    = check('function foo(x) { return x + 1; }; foo(4)', 5);
+
+module.exports.earlyReturn
+    = check('function early(x) { return x + 1; x + 2; }; early(8)', 9);
 
 module.exports.katch
     = check('var ex; try { ex = (function () { throw "bang"; 42; })(); } catch (e) { ex = e; } ex;', 'bang');

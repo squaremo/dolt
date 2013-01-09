@@ -10,9 +10,10 @@ function Context() {
     // proceeds normally.
     this.stack = [];
 
-    // The stack of continuations that are used for propagating
-    // exceptions
-    this.errorStack = [];
+    // The stack of handlers that are used for aborting the normal
+    // flow of control.  I.e. exceptions, returns, and one day breaks
+    // and continues
+    this.handlerStack = [];
 
     this.counter = 0;
 }
@@ -22,27 +23,38 @@ Context.prototype.succeed = function(val) {
     return {cont: k, val: val, counter: ++this.counter};
 }
 
-Context.prototype.fail = function(e) {
-    var ec = this.errorStack.pop();
-    this.stack = ec.stack;
-    return {cont: ec.cont, val: e, counter: ++this.counter};
+// Abort normal execution.  type is the abort type (e.g. 'exception',
+// 'return').  val is the exception or return value.
+Context.prototype.abort = function (type, val) {
+    // Propogate the abort up the abort stack until a handler accepts it
+    for (;;) {
+        var handler = this.handlerStack.pop();
+        this.stack = handler.stack;
+        var res = handler.fun(type, val);
+        if (res !== 'pass')
+            return res;
+    }
 }
+
+Context.prototype.fail = function(e) {
+    return this.abort('exception', e);
+};
 
 Context.prototype.pushCont = function(k) {
     this.stack.push(k);
     return this;
 }
 
-Context.prototype.pushErrorCont = function(k) {
-    this.errorStack.push({
-        cont: k,
-        stack: this.stack.slice(),
-    });
+// Push a handler onto the abort stack.  The handler function takes
+// (type, val), where type is the abort type (e.g. 'exception',
+// 'return'), and val is the exception or return value.
+Context.prototype.pushHandler = function(f) {
+    this.handlerStack.push({fun: f, stack: this.stack.slice()});
 
-    // Push a normal continuation that will discard the error stack entry
+    // Push a normal continuation that will discard the abort handler
     var self = this;
     this.stack.push(function (val) {
-        self.errorStack.pop();
+        self.handlerStack.pop();
         return self.succeed(val);
     });
 
@@ -354,7 +366,17 @@ IUserFunction.prototype.invoke = function (args, env, ctx) {
         for (var i = 0; i < params.length; i++)
             subenv.bind(params[i], evaled_args[i]);
 
-        return subenv.evaluateStatements(fun.node.elements, ctx);
+        return subenv.evaluateStatements(fun.node.elements,
+                                         ctx.pushHandler(function (type, val) {
+            if (type === 'return')
+                return ctx.succeed(val);
+            else if (type === 'exception')
+                // propagate exceptions to the caller
+                return 'pass';
+            else
+                return ctx.fail(new Error('unexpected ' + type
+                                          + ' (in function)'));
+        }));
     }));
 };
 
@@ -560,18 +582,24 @@ ILazy.prototype.force = function (ctx) {
         return ctx.succeed(val);
     }
 
-    function on_error(err) {
+    function on_abort(type, val) {
+        // return etc. within a lazy would be a bad idea
+        if (type !== 'exception')
+            val = new Error(type + ' within lazy');
+
         self.force = ILazy.error;
         self.producer = null;
-        self.error = err;
-        self.awaiting.slice(1).forEach(function (c) { c.run(c.fail(err)); });
+        self.error = val;
+        self.awaiting.slice(1).forEach(function (c) { c.run(c.fail(val)); });
         self.awaiting = null;
-        return ctx.fail(err);
+
+        // Allow the exception to propagate
+        return ctx.fail(val);
     }
 
     return this.producer(ctx.pushCont(function (val) {
-        return force(val, ctx.pushCont(on_value).pushErrorCont(on_error));
-    }).pushErrorCont(on_error));
+        return force(val, ctx.pushCont(on_value).pushHandler(on_abort));
+    }).pushHandler(on_abort));
 };
 
 ILazy.forcing = function (ctx) {
@@ -615,8 +643,9 @@ ILazy.prototype.renderJSON = function (callback) {
             var ctx = new Context();
             ctx.run(self.force(ctx.pushCont(function (val) {
                 callback(self.id, null, IValue.renderJSON(val, callback));
-            }).pushErrorCont(function (err) {
-                callback(self.id, err);
+            }).pushHandler(function (type, val) {
+                // forcing can only yield exception aborts
+                callback(self.id, val);
             })));
         });
     }
@@ -882,7 +911,14 @@ Environment.prototype.runSimple = function (p, cont, econt, dump_parse) {
     }
 
     var ctx = new Context(cont, econt);
-    ctx.run(this.evaluate(p, ctx.pushCont(cont).pushErrorCont(econt)));
+    ctx.run(this.evaluate(p, ctx.pushCont(cont).pushHandler(handler)));
+
+    function handler(type, val) {
+        if (type !== 'exception')
+            val = new Error('unexpected ' + type + ' (in runSimple)');
+
+        econt(val);
+    }
 };
 
 // Run an expression, and return the result as JSON.  See
@@ -1123,6 +1159,12 @@ var evaluate_type = {
         }
     },
 
+    ReturnStatement: function (node, env, ctx) {
+        return env.evaluate(node.value, ctx.pushCont(function (val) {
+            return ctx.abort('return', val);
+        }));
+    },
+
     Function: function (node, env, ctx) {
         var fun = new IUserFunction(node, env);
         if (node.name)
@@ -1132,13 +1174,16 @@ var evaluate_type = {
     },
 
     TryStatement: function (node, env, ctx) {
-        ctx.pushErrorCont(function (err) {
+        return env.evaluateStatements(node.block.statements,
+                                      ctx.pushHandler(function (type, val) {
+            if (type !== 'exception')
+                return 'pass';
+
             var katch = node['catch'];
             var subenv = new Environment(env);
-            subenv.bind(katch.identifier, err);
+            subenv.bind(katch.identifier, val);
             return subenv.evaluateStatements(katch.block.statements, ctx);
-        });
-        return env.evaluateStatements(node.block.statements, ctx);
+        }));
     },
 
     ThrowStatement: function (node, env, ctx) {
