@@ -42,6 +42,9 @@ module.exports.trivialFunCall
 module.exports.katch
     = check('var ex; try { ex = (function () { throw "bang"; 42; })(); } catch (e) { ex = e; } ex;', 'bang');
 
+module.exports.nestedKatch
+    = check('var a = 0, b = 0, c = 0; try { try {} catch (e) { a = a + 1; } b = b + 1; throw "bang"; } catch (e) { c = c + 1; } {a: a, b: b, c: b};', {a: 0, b: 1, c: 1});
+
 module.exports.objConstructorShortcut
     = check('var foo = 1; {foo}', {foo: 1});
 
