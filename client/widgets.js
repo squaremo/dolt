@@ -1,3 +1,7 @@
+// This is the same as the conventional
+// `Sub.prototype = new Super();`
+// except that it avoids running Super (but that can of course be done
+// in Sub if desired).
 function inheritFrom(parentConstructor) {
     function constr() {}
     constr.prototype = parentConstructor.prototype;
