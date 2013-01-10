@@ -28,14 +28,14 @@ function check(expr, expect) {
             }
         });
     };
-};
+}
 
 // Check that we can provoke a 'runtime exception'; that is, something
 // that breaks the interpreter rather than the interpretation. In
 // general these are illegal program constructions, as opposed to
 // operations on illegal values.
 function checkError(expr) {
-    return function(assert) {
+    return function (assert) {
         assert.expect(1);
         var env = new interp.Environment(interp.builtins);
         interp_util.runFully(env, expr, function (status, res) {

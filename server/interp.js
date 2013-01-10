@@ -18,10 +18,10 @@ function Context() {
     this.counter = 0;
 }
 
-Context.prototype.succeed = function(val) {
+Context.prototype.succeed = function (val) {
     var k = this.stack.pop();
     return {cont: k, val: val, counter: ++this.counter};
-}
+};
 
 // Abort normal execution.  type is the abort type (e.g. 'exception',
 // 'return').  val is the exception or return value.
@@ -37,21 +37,21 @@ Context.prototype.abort = function (type, val) {
         if (res !== 'pass')
             return res;
     }
-}
+};
 
-Context.prototype.fail = function(e) {
+Context.prototype.fail = function (e) {
     return this.abort('exception', e);
 };
 
-Context.prototype.pushCont = function(k) {
+Context.prototype.pushCont = function (k) {
     this.stack.push(k);
     return this;
-}
+};
 
 // Push a handler onto the abort stack.  The handler function takes
 // (type, val), where type is the abort type (e.g. 'exception',
 // 'return'), and val is the exception or return value.
-Context.prototype.pushHandler = function(f) {
+Context.prototype.pushHandler = function (f) {
     this.handlerStack.push({fun: f, stackDepth: this.stack.length});
 
     // Push a normal continuation that will discard the abort handler
@@ -62,9 +62,9 @@ Context.prototype.pushHandler = function(f) {
     });
 
     return this;
-}
+};
 
-Context.prototype.run = function(t) {
+Context.prototype.run = function (t) {
     while (t) {
         if (t.counter != this.counter) {
             console.error("OOPS! " + t.counter + " " + this.counter);
@@ -75,7 +75,7 @@ Context.prototype.run = function(t) {
 
         t = t.cont(t.val);
     }
-}
+};
 
 // Takes a non-CPS function (one that simply returns its result), and
 // wraps it to take the cont and econt parameters.
@@ -109,7 +109,7 @@ function hasOwnProperty(obj, prop) {
 
 function IValue() {}
 
-IValue.prototype.truthy = function () { return true; }
+IValue.prototype.truthy = function () { return true; };
 
 IValue.prototype.toNumber = function () {
     throw new Error(this.typename + ' is not a number');
@@ -189,9 +189,9 @@ var IBoolean = itype('boolean', IValue, function (value) {
     this.value = value;
 });
 
-IBoolean.prototype.truthy = function() { return this.value; };
-IBoolean.prototype.toString = function() {return String(this.value);};
-IBoolean.prototype.toJSValue = function() { return this.value; };
+IBoolean.prototype.truthy = function () { return this.value; };
+IBoolean.prototype.toString = function () {return String(this.value);};
+IBoolean.prototype.toJSValue = function () { return this.value; };
 
 // numbers
 
@@ -199,7 +199,7 @@ var INumber = itype('number', IValue, function (value) {
     this.value = value;
 });
 
-INumber.prototype.truthy = function () { return this.value != 0; };
+INumber.prototype.truthy = function () { return this.value !== 0; };
 
 INumber.prototype.toNumber = function () {
     return this.value;
@@ -213,19 +213,19 @@ INumber.prototype.toJSValue = function () {
     return this.value;
 };
 
-INumber.prototype['+'] = function(other) {
+INumber.prototype['+'] = function (other) {
     return this.value + other.toNumber();
 };
 
-INumber.prototype['-'] = function(other) {
+INumber.prototype['-'] = function (other) {
     return this.value - other.toNumber();
 };
 
-INumber.prototype['*'] = function(other) {
+INumber.prototype['*'] = function (other) {
     return this.value * other.toNumber();
 };
 
-INumber.prototype['<'] = function(other) {
+INumber.prototype['<'] = function (other) {
     return this.value < other.toNumber();
 };
 
@@ -235,7 +235,7 @@ var IString = itype('string', IValue, function (value) {
     this.value = value;
 });
 
-IString.prototype.truthy = function () { return this.value.length != 0; };
+IString.prototype.truthy = function () { return this.value.length !== 0; };
 
 IString.prototype.toString = function () {
     return this.value;
@@ -245,7 +245,7 @@ IString.prototype.toJSValue = function () {
     return this.value;
 };
 
-IString.prototype['+'] = function(other) {
+IString.prototype['+'] = function (other) {
     return this.value + other.toString();
 };
 
@@ -332,20 +332,11 @@ IValue.decodeJSON = function (json) {
         return new IObject.decodeJSON(json);
     else
         return json_decoder[type](json);
-}
+};
 
 var json_decoder = {};
 
-json_decoder['undefined'] = function(_v) { return iundefined; }
-
-// Invoke an interpreter function with JS arguments
-function invoke(fun, args, ctx) {
-    return force(fun, ctx.pushCont(function (fun) {
-        return fun.invoke(args.map(function (arg) {
-            return { type: 'Literal', value: arg };
-        }), new Environment(null), ctx);
-    }));
-}
+json_decoder['undefined'] = function (_v) { return iundefined; };
 
 // User-defined functions
 
@@ -503,7 +494,6 @@ IObject.encoded_property_name_re = /^!+$/;
 IObject.prototype.renderJSON = function (callback) {
     var obj = this.obj;
     var res = {};
-    var props = [];
 
     for (var p in obj) {
         if (hasOwnProperty(obj, p)) {
@@ -531,7 +521,7 @@ IObject.decodeJSON = function (json) {
     }
 
     if (encoded)
-        for (var p in encoded)
+        for (p in encoded)
             json[p] = encoded[p];
 
     return new IObject(json);
@@ -553,15 +543,15 @@ ILazy.prototype.invokeMethod = function (name, args, env, ctx) {
             return val.invokeMethod(name, args, env, ctx);
         }));
     }));
-}
+};
 
 ILazy.prototype.toString = function () {
     if (this.producer)
         return this.typename + '(unforced)';
     else if ('value' in this)
-        return this.typename + '(forced: ' + self.value + ')';
+        return this.typename + '(forced: ' + this.value + ')';
     else if ('error' in this)
-        return this.typename + '(error: ' + self.error + ')';
+        return this.typename + '(error: ' + this.error + ')';
     else
         return this.typename + '(forcing)';
 };
@@ -672,12 +662,12 @@ var inil = singleton_itype('nil', {
     truthy: function () { return false; },
     toString: function () { return '[]'; },
     getProperty: continuate(function (key, ctx) { return iundefined; }),
-    renderJSON: function() { return []; },
-    toSequence: function() { return this; },
+    renderJSON: function () { return []; },
+    toSequence: function () { return this; },
 
     im_map: continuate(function (args, env) { return inil; }),
-    im_concat: continuate(function(args, env) { return inil; }),
-    im_where: continuate(function(args, env) { return inil; }),
+    im_concat: continuate(function (args, env) { return inil; }),
+    im_where: continuate(function (args, env) { return inil; }),
 });
 
 var ICons = itype('cons', IValue, function (head, tail) {
@@ -769,7 +759,7 @@ ICons.prototype.im_map = continuate(function (args, env) {
     });
 });
 
-ICons.prototype.im_where = continuate(function(args, env) {
+ICons.prototype.im_where = continuate(function (args, env) {
     var self = this;
     return new ILazy(function (ctx) {
         return apply_deferred_arg(args, env, self.head,
@@ -1061,7 +1051,7 @@ function evaluate_literal(node, env, ctx) {
 }
 
 function evaluate_comprehension(node, env, ctx) {
-    var varnode = []
+    var varnode = [];
     if (node.name)
         varnode.push({ type: 'Variable', name: node.name });
 
@@ -1071,7 +1061,7 @@ function evaluate_comprehension(node, env, ctx) {
         seq = IValue.from_js(seq);
 
         function do_map(seq) {
-            return seq.invokeMethod('map', varnode.concat(node.yield), env, ctx);
+            return seq.invokeMethod('map', varnode.concat(node['yield']), env, ctx);
         }
 
         if (!node.guard)
@@ -1116,11 +1106,13 @@ var evaluate_type = {
         var decls = node.declarations;
 
         function do_decls(i) {
+            var decl;
+
             for (;;) {
                 if (i == decls.length)
                     return ctx.succeed(iundefined);
 
-                var decl = decls[i];
+                decl = decls[i];
                 if (decl.value)
                     break;
 
@@ -1150,14 +1142,14 @@ var evaluate_type = {
             ctx.pushCont(function (base) {
                 return env.evaluatePropertyName(
                     node.name.name, ctx.pushCont(function (name) {
-                        return base.invokeMethod(name, node.arguments, env, ctx);
+                        return base.invokeMethod(name, node['arguments'], env, ctx);
                     }));
             });
             return env.evaluateForced(node.name.base, ctx);
         }
         else {
             return env.evaluateForced(node.name, ctx.pushCont(function (fun) {
-                return fun.invoke(node.arguments, env, ctx);
+                return fun.invoke(node['arguments'], env, ctx);
             }));
         }
     },
@@ -1190,7 +1182,7 @@ var evaluate_type = {
     },
 
     ThrowStatement: function (node, env, ctx) {
-        return env.evaluateForced(node.exception, ctx.pushCont(function(val) {
+        return env.evaluateForced(node.exception, ctx.pushCont(function (val) {
             return ctx.fail(val);
         }));
     },
@@ -1249,7 +1241,7 @@ var evaluate_type = {
     },
 
     ComprehensionMapExpression: evaluate_comprehension,
-    ComprehensionConcatMapExpression: function(node, env, ctx) {
+    ComprehensionConcatMapExpression: function (node, env, ctx) {
         return evaluate_comprehension(node, env, ctx.pushCont(function (res) {
             return res.invokeMethod('concat', [], env, ctx);
         }));
@@ -1295,7 +1287,7 @@ builtins.bind('table', builtin(function (data, cols) {
 }));
 
 function run(p) {
-    builtins.run(p,
+    builtins.runSimple(p,
                  function (val) { console.log("=> " + IValue.from_js(val)); },
                  function (err) { console.log("=! " + err.stack); },
                  true);
