@@ -29,7 +29,10 @@ Context.prototype.abort = function (type, val) {
     // Propogate the abort up the abort stack until a handler accepts it
     for (;;) {
         var handler = this.handlerStack.pop();
-        this.stack = handler.stack;
+
+        while (this.stack.length > handler.stackDepth)
+            this.stack.pop();
+
         var res = handler.fun(type, val);
         if (res !== 'pass')
             return res;
@@ -49,7 +52,7 @@ Context.prototype.pushCont = function(k) {
 // (type, val), where type is the abort type (e.g. 'exception',
 // 'return'), and val is the exception or return value.
 Context.prototype.pushHandler = function(f) {
-    this.handlerStack.push({fun: f, stack: this.stack.slice()});
+    this.handlerStack.push({fun: f, stackDepth: this.stack.length});
 
     // Push a normal continuation that will discard the abort handler
     var self = this;
