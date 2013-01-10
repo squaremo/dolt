@@ -7,7 +7,7 @@ function check(expr, expect) {
     return function (assert) {
         assert.expect(1);
         var env = new interp.Environment(interp.builtins);
-        interp_util.runFully(env, 'res', expr, function (status, res) {
+        interp_util.runFully(env, expr, function (status, res) {
             if (typeof(status) === 'string') {
                 if (status === 'complete') {
                     res = interp_util.resolveSequences(res);
