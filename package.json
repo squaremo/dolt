@@ -6,7 +6,6 @@
         "connect": "",
         "when": "",
         "node-uuid": "",
-        "noodle": "git+https://github.com/squaremo/noodle.git",
         "promisify": "",
         "sockjs": "",
         "mu2": ""
