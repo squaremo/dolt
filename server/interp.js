@@ -15,35 +15,48 @@ function Context() {
     // and continues
     this.handlerStack = [];
 
-    this.counter = 0;
+    // The current state, which can be:
+    // 'value': Have a value to be supplied to the topmost continuation
+    // 'abort': Abort of type this.abortType pending
+    // 'empty': Awaiting a value.
+    // 'paused': The interpreter has been paused.
+    this.state = 'paused';
+
+    // The current value, to be passed to the continuation on the top
+    // of the stack.
+    this.value = null;
+
+    // The type of abort currently pending
+    this.abortType = null;
 }
 
 Context.prototype.succeed = function (val) {
-    var k = this.stack.pop();
-    return {cont: k, val: val, counter: ++this.counter};
+    if (this.state !== 'empty')
+        throw new Error('Context.succeed in state ' + this.state);
+
+    this.state = 'value';
+    this.value = val;
 };
 
 // Abort normal execution.  type is the abort type (e.g. 'exception',
 // 'return').  val is the exception or return value.
 Context.prototype.abort = function (type, val) {
-    // Propogate the abort up the abort stack until a handler accepts it
-    for (;;) {
-        var handler = this.handlerStack.pop();
+    if (this.state !== 'empty')
+        throw new Error('Context.abort in state ' + this.state);
 
-        while (this.stack.length > handler.stackDepth)
-            this.stack.pop();
-
-        var res = handler.fun(type, val);
-        if (res !== 'pass')
-            return res;
-    }
+    this.state = 'abort';
+    this.abortType = type;
+    this.value = val;
 };
 
 Context.prototype.fail = function (e) {
-    return this.abort('exception', e);
+    this.abort('exception', e);
 };
 
-Context.prototype.pushCont = function (k) {
+Context.prototype.pushCont = function (k, dont_check_state) {
+    if (this.state !== 'empty')
+        throw new Error('Context.pushCont in state ' + this.state);
+
     this.stack.push(k);
     return this;
 };
@@ -52,6 +65,9 @@ Context.prototype.pushCont = function (k) {
 // (type, val), where type is the abort type (e.g. 'exception',
 // 'return'), and val is the exception or return value.
 Context.prototype.pushHandler = function (f) {
+    if (this.state !== 'empty')
+        throw new Error('Context.pushHandler in state ' + this.state);
+
     this.handlerStack.push({fun: f, stackDepth: this.stack.length});
 
     // Push a normal continuation that will discard the abort handler
@@ -64,17 +80,67 @@ Context.prototype.pushHandler = function (f) {
     return this;
 };
 
-Context.prototype.run = function (t) {
-    while (t) {
-        if (t.counter != this.counter) {
-            console.error("OOPS! " + t.counter + " " + this.counter);
-            console.error("Tramp: " + t);
-            console.error("Continuation: " + t.cont);
-            console.error("Value: " + t.val);
+Context.prototype.pause = function () {
+    if (this.state !== 'empty')
+        throw new Error('Context.pause in state ' + this.state);
+
+    this.state = 'paused';
+};
+
+Context.prototype.run = function (start_fun) {
+    if (this.state !== 'paused')
+        throw new Error('Context.run in state ' + this.state);
+
+    this.state = 'empty';
+    start_fun();
+
+    var val;
+
+    for (;;) {
+        while (this.state === 'value') {
+            // Call the next continuation.  This loop is the core of
+            // the interpreter.
+            val = this.value;
+            this.state = 'empty';
+            this.value = null;
+            this.stack.pop()(val);
         }
 
-        t = t.cont(t.val);
+        if (this.state === 'abort') {
+            // Process an abort
+            var abort = this.abortType;
+            val = this.value
+            this.state = 'empty';
+            this.value = null;
+
+            // Try handlers until one does something
+            do {
+                var handler = this.handlerStack.pop();
+
+                while (this.stack.length > handler.stackDepth)
+                    this.stack.pop();
+
+                handler.fun(abort, val);
+            } while (this.state === 'empty');
+        }
+        else {
+            // State is either paused or empty
+            break;
+        }
     }
+
+    if (this.state !== 'paused')
+        throw new Error('Continuation left context in state ' + this.state);
+};
+
+Context.prototype.resume = function (val) {
+    var self = this;
+    this.run(function () { self.succeed(val); });
+};
+
+Context.prototype.resumeFail = function (err) {
+    var self = this;
+    this.run(function () { self.fail(err); });
 };
 
 // Takes a non-CPS function (one that simply returns its result), and
@@ -84,10 +150,10 @@ function continuate(fun) {
         var args = Array.prototype.slice.call(arguments, 0, -1);
         var ctx = arguments[arguments.length-1];
         try {
-            return ctx.succeed(fun.apply(this, args));
+            ctx.succeed(fun.apply(this, args));
         }
         catch (e) {
-            return ctx.fail(e);
+            ctx.fail(e);
         }
     };
 }
@@ -127,19 +193,19 @@ binary_operators.forEach(function (op) {
 });
 
 IValue.prototype.force = function (ctx) {
-    return ctx.succeed(this);
+    ctx.succeed(this);
 };
 
 IValue.prototype.invoke = function (args, env, ctx) {
-    return ctx.fail(new Error(this.typename + ' is not a function'));
+    ctx.fail(new Error(this.typename + ' is not a function'));
 };
 
 IValue.prototype.getProperty = function (key, ctx) {
-    return ctx.fail(new Error(this.typename + ' is not an object'));
+    ctx.fail(new Error(this.typename + ' is not an object'));
 };
 
 IValue.prototype.setProperty = function (key, val, ctx) {
-    return ctx.fail(new Error(this.typename + ' is not an object'));
+    ctx.fail(new Error(this.typename + ' is not an object'));
 };
 
 // In general, use this rather than calling im_ methods directly,
@@ -148,10 +214,9 @@ IValue.prototype.invokeMethod = function (name, args, env, ctx) {
     // If there is a method, call it
     var m = this['im_' + name];
     if (m)
-        return m.call(this, args, env, ctx);
+        m.call(this, args, env, ctx);
     else
-        return ctx.fail(new Error(this.typename
-                                  + ' has no method "' + name + '"'));
+        ctx.fail(new Error(this.typename + ' has no method "' + name + '"'));
 };
 
 IValue.prototype.renderJSON = function (callback) {
@@ -282,17 +347,15 @@ IValue.from_js = function (jsval) {
 // 'forcing'.
 function force(val, ctx) {
     try {
-        return IValue.from_js(val).force(ctx);
+        IValue.from_js(val).force(ctx);
     }
     catch (e) {
-        return ctx.fail(e);
+        ctx.fail(e);
     }
 }
 
-function truthy(val, ctx) {
-    return force(val, ctx.pushCont(function (val) {
-        return ctx.succeed(val.truthy());
-    }));
+function truthify(val, ctx) {
+    force(val, ctx.pushCont(function (val) { ctx.succeed(val.truthy()); }));
 }
 
 // Convert a value, that may be an IValue or already a JS value, to
@@ -353,23 +416,21 @@ IUserFunction.prototype.invoke = function (args, env, ctx) {
     var fun = this;
 
     // User functions don't force their arguments
-    return evaluateMulti(env.evaluate.bind(env), args,
-                         ctx.pushCont(function (evaled_args) {
+    evaluateMulti(env.evaluate.bind(env), args,
+                  ctx.pushCont(function (evaled_args) {
         var subenv = new Environment(fun.env);
         var params = fun.node.params;
         for (var i = 0; i < params.length; i++)
             subenv.bind(params[i], evaled_args[i]);
 
-        return subenv.evaluateStatements(fun.node.elements,
-                                         ctx.pushHandler(function (type, val) {
+        subenv.evaluateStatements(fun.node.elements,
+                                  ctx.pushHandler(function (type, val) {
             if (type === 'return')
-                return ctx.succeed(val);
-            else if (type === 'exception')
-                // propagate exceptions to the caller
-                return 'pass';
-            else
-                return ctx.fail(new Error('unexpected ' + type
-                                          + ' (in function)'));
+                ctx.succeed(val);
+            else if (type !== 'exception')
+                ctx.fail(new Error('unexpected ' + type + ' (in function)'));
+
+            // Exceptions are propogated up to the caller
         }));
     }));
 };
@@ -396,18 +457,18 @@ function deferred_builtin(fun) {
 function builtin(fun) {
     var res = new IBuiltinFunction();
     res.invoke = function (args, env, ctx) {
-        return evaluateMulti(env.evaluateForced.bind(env), args,
-                             ctx.pushCont(function (evaled_args) {
+        evaluateMulti(env.evaluateForced.bind(env), args,
+                      ctx.pushCont(function (evaled_args) {
             try {
                 // evaluateForced will have left us with IValues, so
                 // convert to JS values
                 for (var i = 0; i < args.length; i++)
                     evaled_args[i] = IValue.to_js(evaled_args[i]);
 
-                return ctx.succeed(fun.apply(null, evaled_args));
+                ctx.succeed(fun.apply(null, evaled_args));
             }
             catch (e) {
-                return ctx.fail(e);
+                ctx.fail(e);
             }
         }));
     };
@@ -419,23 +480,24 @@ function builtin(fun) {
 function promised_builtin(fun) {
     var res = new IBuiltinFunction();
     res.invoke = function (args, env, ctx) {
-        return evaluateMulti(env.evaluateForced.bind(env), args,
-                             ctx.pushCont(function (evaled_args) {
+        evaluateMulti(env.evaluateForced.bind(env), args,
+                      ctx.pushCont(function (evaled_args) {
+            var p;
             try {
                 // evaluateForced will have left us with IValues, so
                 // convert to JS values
                 for (var i = 0; i < args.length; i++)
                     evaled_args[i] = IValue.to_js(evaled_args[i]);
 
-                fun.apply(null, evaled_args).then(function (val) {
-                    ctx.run(ctx.succeed(val));
-                }, function (err) {
-                    ctx.run(ctx.fail(err));
-                });
+                p = fun.apply(null, evaled_args);
             }
             catch (e) {
-                return ctx.fail(e);
+                ctx.fail(e);
             }
+
+            ctx.pause();
+            p.then(function (val) { ctx.resume(val); },
+                   function (err) { ctx.resumeFail(err); });
         }));
     };
     return res;
@@ -467,26 +529,26 @@ IObject.prototype.toJSValue = function () {
 IObject.prototype.getProperty = function (key, ctx) {
     key = IValue.to_js(key);
     // Avoid the prototype chain
-    return ctx.succeed(hasOwnProperty(this.obj, key) ? this.obj[key]
-                       : iundefined);
+    ctx.succeed(hasOwnProperty(this.obj, key) ? this.obj[key] : iundefined);
 };
 
 IObject.prototype.setProperty = function (key, val, ctx) {
     this.obj[IValue.to_js(key)] = val;
-    return ctx.succeed();
+    // XXX this looks fishy
+    ctx.succeed();
 };
 
 IObject.prototype.invokeMethod = function (name, args, env, ctx) {
     // Try methods first
     var m = this['im_'+name];
-    if (m)
-        return m.call(this, args, env, ctx);
+    if (m) {
+        m.call(this, args, env, ctx);
+        return;
+    }
 
     // Otherwise interpret method invocations as property accesses
     var prop = hasOwnProperty(this.obj, name) ? this.obj[name] : iundefined;
-    return force(prop, ctx.pushCont(function (val) {
-        return val.invoke(args, env, ctx);
-    }));
+    force(prop, ctx.pushCont(function (val) { val.invoke(args, env, ctx); }));
 };
 
 IObject.encoded_property_name_re = /^!+$/;
@@ -538,9 +600,9 @@ var ILazy = itype('lazy', IValue, function (producer) {
 // on it.
 ILazy.prototype.invokeMethod = function (name, args, env, ctx) {
     var self = this;
-    return ctx.succeed(new ILazy(function (ctx) {
-        return self.force(ctx.pushCont(function (val) {
-            return val.invokeMethod(name, args, env, ctx);
+    ctx.succeed(new ILazy(function (ctx) {
+        self.force(ctx.pushCont(function (val) {
+            val.invokeMethod(name, args, env, ctx);
         }));
     }));
 };
@@ -560,19 +622,16 @@ ILazy.prototype.force = function (ctx) {
     var self = this;
 
     self.force = ILazy.forcing;
-
-    // Although the first context to visit needs to be treated
-    // specially, putting it in `self.awaiting` simplifies
-    // `ILazy.forcing`
-    self.awaiting = [ctx];
+    self.awaiting = [];
+    self.context = ctx;
 
     function on_value(val) {
         self.force = ILazy.forced;
-        self.producer = null;
         self.value = val;
-        self.awaiting.slice(1).forEach(function (c) { c.run(c.succeed(val)); });
+        self.awaiting.forEach(function (octx) { octx.resume(val); });
         self.awaiting = null;
-        return ctx.succeed(val);
+        self.context = null;
+        ctx.succeed(val);
     }
 
     function on_abort(type, val) {
@@ -581,33 +640,36 @@ ILazy.prototype.force = function (ctx) {
             val = new Error(type + ' within lazy');
 
         self.force = ILazy.error;
-        self.producer = null;
         self.error = val;
-        self.awaiting.slice(1).forEach(function (c) { c.run(c.fail(val)); });
+        self.awaiting.forEach(function (octx) { octx.resumeFail(val); });
         self.awaiting = null;
+        self.context = null;
 
-        // Allow the exception to propagate
-        return ctx.fail(val);
+        // Explicitly propagate exceptions, because of the case where
+        // we handle non-exception aborts.
+        ctx.fail(val);
     }
 
-    return this.producer(ctx.pushCont(function (val) {
-        return force(val, ctx.pushCont(on_value).pushHandler(on_abort));
+    this.producer(ctx.pushCont(function (val) {
+        force(val, ctx.pushCont(on_value).pushHandler(on_abort));
     }).pushHandler(on_abort));
+    this.producer = null;
 };
 
 ILazy.forcing = function (ctx) {
-    if (this.awaiting.indexOf(ctx) > -1)
+    if (ctx === this.context)
         throw new Error("Lazy value depends on itself");
 
+    ctx.pause();
     this.awaiting.push(ctx);
 };
 
 ILazy.forced = function (ctx) {
-    return ctx.succeed(this.value);
+    ctx.succeed(this.value);
 };
 
 ILazy.error = function (ctx) {
-    return ctx.fail(this.error);
+    ctx.fail(this.error);
 };
 
 ILazy.next_json_id = 0;
@@ -634,12 +696,16 @@ ILazy.prototype.renderJSON = function (callback) {
         var self = this;
         process.nextTick(function () {
             var ctx = new Context();
-            ctx.run(self.force(ctx.pushCont(function (val) {
-                callback(self.id, null, IValue.renderJSON(val, callback));
-            }).pushHandler(function (type, val) {
-                // forcing can only yield exception aborts
-                callback(self.id, val);
-            })));
+            ctx.run(function () {
+                self.force(ctx.pushCont(function (val) {
+                    ctx.pause();
+                    callback(self.id, null, IValue.renderJSON(val, callback));
+                }).pushHandler(function (type, val) {
+                    ctx.pause();
+                    // forcing can only yield exception aborts
+                    callback(self.id, val);
+                }));
+            });
         });
     }
 
@@ -652,7 +718,7 @@ json_decoder.lazy = function (json) {
     // cannot freeze and thaw an ongoing computation.
 
     return new ILazy(function (ctx) {
-        return ctx.fail(new Error("discarded lazy"));
+        ctx.fail(new Error("discarded lazy"));
     });
 };
 
@@ -699,15 +765,15 @@ ICons.prototype.toSequence = function () {
 ICons.prototype.getProperty = function (key, ctx) {
     key = IValue.to_js(key);
     if (key === 0) {
-        return ctx.succeed(this.head);
+        ctx.succeed(this.head);
     }
     else if (typeof(key) === 'number') {
-        return force(this.tail, ctx.pushCont(function (tail) {
-            return tail.getProperty(key - 1, ctx);
+        force(this.tail, ctx.pushCont(function (tail) {
+            tail.getProperty(key - 1, ctx);
         }));
     }
     else {
-        return ctx.succeed(iundefined);
+        ctx.succeed(iundefined);
     }
 };
 
@@ -730,30 +796,28 @@ function apply_deferred_arg(defarg, env, elem, ctx) {
 
     case 2:
         if (defarg[0].type !== 'Variable')
-            return ctx.fail(new Error('expected variable, got '
-                                      + defarg[0].type));
+            ctx.fail(new Error('expected variable, got ' + defarg[0].type));
 
         varname = defarg[0].name;
         body = defarg[1];
         break;
 
     case 3:
-        return ctx.fail(new Error('deferred argument looks strange'));
+        ctx.fail(new Error('deferred argument looks strange'));
     }
 
     subenv = new Environment(subenv);
     subenv.bind(varname, elem);
-    return subenv.evaluate(body, ctx);
+    subenv.evaluate(body, ctx);
 }
 
 ICons.prototype.im_map = continuate(function (args, env) {
     var self = this;
     return new ILazy(function (ctx) {
-        return apply_deferred_arg(args, env, self.head,
-                                  ctx.pushCont(function (head) {
-            return self.tail.invokeMethod('map', args, env,
-                                          ctx.pushCont(function (tail) {
-                return ctx.succeed(new ICons(head, tail));
+        apply_deferred_arg(args, env, self.head, ctx.pushCont(function (head) {
+            self.tail.invokeMethod('map', args, env,
+                                   ctx.pushCont(function (tail) {
+                ctx.succeed(new ICons(head, tail));
             }));
         }));
     });
@@ -762,14 +826,13 @@ ICons.prototype.im_map = continuate(function (args, env) {
 ICons.prototype.im_where = continuate(function (args, env) {
     var self = this;
     return new ILazy(function (ctx) {
-        return apply_deferred_arg(args, env, self.head,
-                                  ctx.pushCont(function (pass) {
-            return truthy(pass, ctx.pushCont(function (pass) {
-                return self.tail.invokeMethod('where', args, env,
-                                              ctx.pushCont(function (next) {
+        apply_deferred_arg(args, env, self.head, ctx.pushCont(function (pass) {
+            truthify(pass, ctx.pushCont(function (pass) {
+                self.tail.invokeMethod('where', args, env,
+                                       ctx.pushCont(function (next) {
                     if (pass)
                         next = new ICons(self.head, next);
-                    return ctx.succeed(next);
+                    ctx.succeed(next);
                 }));
             }));
         }));
@@ -784,13 +847,12 @@ ICons.prototype.im_where = continuate(function (args, env) {
 ICons.prototype.im_concat = continuate(function (args, env) {
     function concat(head, tail) {
         return new ILazy(function (ctx) {
-            return force(head, ctx.pushCont(function (head) {
+            force(head, ctx.pushCont(function (head) {
                 head = head.toSequence();
                 if (head === inil)
-                    return tail.invokeMethod('concat', args, env, ctx);
+                    tail.invokeMethod('concat', args, env, ctx);
                 else
-                    return ctx.succeed(new ICons(head.head,
-                                                 concat(head.tail, tail)));
+                    ctx.succeed(new ICons(head.head, concat(head.tail, tail)));
             }));
         });
     }
@@ -830,15 +892,15 @@ IArray.prototype.toSequence = function () {
 };
 
 IArray.prototype.im_map = function (args, env, ctx) {
-    return this.toSequence().im_map(args, env, ctx);
+    this.toSequence().im_map(args, env, ctx);
 };
 
 IArray.prototype.im_where = function (args, env, ctx) {
-    return this.toSequence().im_where(args, env, ctx);
+    this.toSequence().im_where(args, env, ctx);
 };
 
 IArray.prototype.im_concat = function (args, env, ctx) {
-    return this.toSequence().im_concat(args, env, ctx);
+    this.toSequence().im_concat(args, env, ctx);
 };
 
 IArray.prototype.renderJSON = function (callback) {
@@ -863,7 +925,7 @@ var ITable = itype('table', IValue, function (data, columns) {
     this.columns = columns;
 });
 
-ITable.prototype.getProperty = continuate(function (key, ctx) {
+ITable.prototype.getProperty = continuate(function (key) {
     if (hasOwnProperty(this, key))
         return this.key;
     else
@@ -903,15 +965,19 @@ Environment.prototype.runSimple = function (p, cont, econt, dump_parse) {
         return;
     }
 
-    var ctx = new Context(cont, econt);
-    ctx.run(this.evaluate(p, ctx.pushCont(cont).pushHandler(handler)));
+    var ctx = new Context();
+    var self = this;
+    ctx.run(function () {
+        self.evaluate(p, ctx.pushCont(function (val) {
+            ctx.pause();
+            cont(val);
+        }).pushHandler(function (type, val) {
+            if (type !== 'exception')
+                val = new Error('unexpected ' + type + ' (in runSimple)');
 
-    function handler(type, val) {
-        if (type !== 'exception')
-            val = new Error('unexpected ' + type + ' (in runSimple)');
-
-        econt(val);
-    }
+            econt(val);
+        }));
+    });
 };
 
 // Run an expression, and return the result as JSON.  See
@@ -922,9 +988,7 @@ Environment.prototype.run = function (p, callback, dump_parse) {
         console.log(JSON.stringify(p, null, "  "));
 
     var self = this;
-    var lazy = new ILazy(function (ctx) {
-        return self.evaluate(p, ctx);
-    });
+    var lazy = new ILazy(function (ctx) { self.evaluate(p, ctx); });
 
     return lazy.renderJSON(callback);
 };
@@ -938,24 +1002,22 @@ Environment.prototype.variable = function (symbol, ctx) {
     while (!(symbol in env.frame)) {
         env = env.parent;
         if (!env)
-            return ctx.fail(new Error("unbound variable '" + symbol + "'"));
+            ctx.fail(new Error("unbound variable '" + symbol + "'"));
     }
 
-    return ctx.succeed({
+    ctx.succeed({
         get: function (ctx) {
-            return ctx.succeed(env.frame[symbol]);
+            ctx.succeed(env.frame[symbol]);
         },
         set: function (val, ctx) {
             env.frame[symbol] = val;
-            return ctx.succeed();
+            ctx.succeed();
         }
     });
 };
 
 Environment.prototype.evaluateForced = function (node, ctx) {
-    return this.evaluate(node, ctx.pushCont(function (val) {
-        return force(val, ctx);
-    }));
+    this.evaluate(node, ctx.pushCont(function (val) { force(val, ctx); }));
 };
 
 // Evaluate an array of expressions using the passed evaluation function
@@ -963,40 +1025,44 @@ function evaluateMulti(evaluator, items, ctx) {
     var evaled = [];
 
     function do_items(i) {
-        if (i == items.length)
-            return ctx.succeed(evaled);
+        if (i == items.length) {
+            ctx.succeed(evaled);
+            return;
+        }
 
-        return evaluator(items[i], ctx.pushCont(function (a) {
+        evaluator(items[i], ctx.pushCont(function (a) {
             evaled.push(a);
-            return do_items(i + 1);
+            do_items(i + 1);
         }));
     }
 
-    return do_items(0);
+    do_items(0);
 }
 
 Environment.prototype.evaluateStatements = function (stmts, ctx) {
     var env = this;
 
     function do_elements(i, last) {
-        if (i == stmts.length)
-            return ctx.succeed(last);
+        if (i == stmts.length) {
+            ctx.succeed(last);
+            return;
+        }
 
-        return env.evaluate(stmts[i], ctx.pushCont(function (last) {
-            return do_elements(i + 1, last);
+        env.evaluate(stmts[i], ctx.pushCont(function (last) {
+            do_elements(i + 1, last);
         }));
     }
 
-    return do_elements(0, iundefined);
+    do_elements(0, iundefined);
 };
 
 Environment.prototype.evaluatePropertyName = function (name, ctx) {
     if (typeof(name) === 'object')
         // it's a foo[bar] PropertyAccess
-        return this.evaluateForced(name, ctx);
+        this.evaluateForced(name, ctx);
     else
         // it's a foo.bar PropertyAccess
-        return ctx.succeed(name);
+        ctx.succeed(name);
 };
 
 
@@ -1011,33 +1077,31 @@ Environment.prototype.evaluatePropertyName = function (name, ctx) {
 
 var evaluate_lvalue_type = {
     Variable: function (node, env, ctx) {
-        return env.variable(node.name, ctx);
+        env.variable(node.name, ctx);
     },
 
     PropertyAccess: function (node, env, ctx) {
-        ctx.pushCont(function (base) {
-            ctx.pushCont(function (name) {
-                return ctx.succeed({
+        env.evaluateForced(node.base, ctx.pushCont(function (base) {
+            env.evaluatePropertyName(node.name, ctx.pushCont(function (name) {
+                ctx.succeed({
                     get: function (ctx) {
-                        return base.getProperty(name, ctx);
+                        base.getProperty(name, ctx);
                     },
                     set: function (val, ctx) {
-                        return base.setProperty(name, val, ctx);
+                        base.setProperty(name, val, ctx);
                     }
                 });
-            });
-            return env.evaluatePropertyName(node.name, ctx);
-        });
-        return env.evaluateForced(node.base, ctx);
+            }));
+        }));
     },
 };
 
 Environment.prototype.evaluateLValue = function (node, ctx) {
     var handler = evaluate_lvalue_type[node.type];
     if (handler)
-        return handler(node, this, ctx);
+        handler(node, this, ctx);
     else
-        return ctx.fail(new Error(node.type + " not an lvalue"));
+        ctx.fail(new Error(node.type + " not an lvalue"));
 };
 
 // to convert from assignment operators to the corresponding binary operators
@@ -1047,7 +1111,7 @@ binary_operators.forEach(function (op) {
 });
 
 function evaluate_literal(node, env, ctx) {
-    return ctx.succeed(node.value);
+    ctx.succeed(node.value);
 }
 
 function evaluate_comprehension(node, env, ctx) {
@@ -1055,20 +1119,20 @@ function evaluate_comprehension(node, env, ctx) {
     if (node.name)
         varnode.push({ type: 'Variable', name: node.name });
 
-    return env.evaluate(node.generate, ctx.pushCont(function (seq) {
+    env.evaluate(node.generate, ctx.pushCont(function (seq) {
         // we don't want to force seq, but we do need to handle
         // the case where it is a JS array.
         seq = IValue.from_js(seq);
 
         function do_map(seq) {
-            return seq.invokeMethod('map', varnode.concat(node['yield']), env, ctx);
+            seq.invokeMethod('map', varnode.concat(node['yield']), env, ctx);
         }
 
         if (!node.guard)
-            return do_map(seq);
+            do_map(seq);
         else
-            return seq.invokeMethod('where', varnode.concat(node.guard), env,
-                                    ctx.pushCont(do_map));
+            seq.invokeMethod('where', varnode.concat(node.guard), env,
+                             ctx.pushCont(do_map));
     }));
 }
 
@@ -1078,25 +1142,25 @@ var evaluate_type = {
     StringLiteral: evaluate_literal,
 
     EmptyStatement: function (node, env, ctx) {
-        return ctx.succeed(iundefined);
+        ctx.succeed(iundefined);
     },
 
     Program: function (node, env, ctx) {
-        return env.evaluateStatements(node.elements, ctx);
+        env.evaluateStatements(node.elements, ctx);
     },
 
     Block: function (node, env, ctx) {
-        return env.evaluateStatements(node.statements, ctx);
+        env.evaluateStatements(node.statements, ctx);
     },
 
     BinaryExpression: function (node, env, ctx) {
-        return env.evaluateForced(node.left, ctx.pushCont(function (a) {
-            return env.evaluateForced(node.right, ctx.pushCont(function (b) {
+        env.evaluateForced(node.left, ctx.pushCont(function (a) {
+            env.evaluateForced(node.right, ctx.pushCont(function (b) {
                 try {
-                    return ctx.succeed(a[node.operator](b));
+                    ctx.succeed(a[node.operator](b));
                 }
                 catch (e) {
-                    return ctx.fail(e);
+                    ctx.fail(e);
                 }
             }));
         }));
@@ -1109,8 +1173,10 @@ var evaluate_type = {
             var decl;
 
             for (;;) {
-                if (i == decls.length)
-                    return ctx.succeed(iundefined);
+                if (i == decls.length) {
+                    ctx.succeed(iundefined);
+                    return;
+                }
 
                 decl = decls[i];
                 if (decl.value)
@@ -1120,43 +1186,43 @@ var evaluate_type = {
                 i++;
             }
 
-            return env.evaluate(decl.value, ctx.pushCont(function (val) {
+            env.evaluate(decl.value, ctx.pushCont(function (val) {
                 env.bind(decl.name, val);
-                return do_decls(i + 1);
+                do_decls(i + 1);
             }));
         }
 
-        return do_decls(0);
+        do_decls(0);
     },
 
     StringPattern: function (node, env, ctx) {
-        return evaluateMulti(env.evaluateForced.bind(env), node.elements,
-                             ctx.pushCont(function (pieces) {
-            return ctx.succeed(pieces.join(''));
+        evaluateMulti(env.evaluateForced.bind(env), node.elements,
+                      ctx.pushCont(function (pieces) {
+            ctx.succeed(pieces.join(''));
         }));
     },
 
     FunctionCall: function (node, env, ctx) {
         if (node.name.type == 'PropertyAccess') {
             // It might be a method call
-            ctx.pushCont(function (base) {
-                return env.evaluatePropertyName(
-                    node.name.name, ctx.pushCont(function (name) {
-                        return base.invokeMethod(name, node['arguments'], env, ctx);
-                    }));
-            });
-            return env.evaluateForced(node.name.base, ctx);
+            env.evaluateForced(node.name.base, ctx.pushCont(function (base) {
+                env.evaluatePropertyName(node.name.name,
+                                         ctx.pushCont(function (name) {
+                    base.invokeMethod(name, node['arguments'], env, ctx);
+                }));
+            }));
+
         }
         else {
-            return env.evaluateForced(node.name, ctx.pushCont(function (fun) {
-                return fun.invoke(node['arguments'], env, ctx);
+            env.evaluateForced(node.name, ctx.pushCont(function (fun) {
+                fun.invoke(node['arguments'], env, ctx);
             }));
         }
     },
 
     ReturnStatement: function (node, env, ctx) {
-        return env.evaluate(node.value, ctx.pushCont(function (val) {
-            return ctx.abort('return', val);
+        env.evaluate(node.value, ctx.pushCont(function (val) {
+            ctx.abort('return', val);
         }));
     },
 
@@ -1165,58 +1231,57 @@ var evaluate_type = {
         if (node.name)
             env.bind(node.name, fun);
 
-        return ctx.succeed(fun);
+        ctx.succeed(fun);
     },
 
     TryStatement: function (node, env, ctx) {
-        return env.evaluateStatements(node.block.statements,
-                                      ctx.pushHandler(function (type, val) {
+        env.evaluateStatements(node.block.statements,
+                               ctx.pushHandler(function (type, val) {
             if (type !== 'exception')
-                return 'pass';
+                return;
 
             var katch = node['catch'];
             var subenv = new Environment(env);
             subenv.bind(katch.identifier, val);
-            return subenv.evaluateStatements(katch.block.statements, ctx);
+            subenv.evaluateStatements(katch.block.statements, ctx);
         }));
     },
 
     ThrowStatement: function (node, env, ctx) {
-        return env.evaluateForced(node.exception, ctx.pushCont(function (val) {
-            return ctx.fail(val);
+        env.evaluateForced(node.exception, ctx.pushCont(function (val) {
+            ctx.fail(val);
         }));
     },
 
     AssignmentExpression: function (node, env, ctx) {
-        ctx.pushCont(function (lval) {
+        env.evaluateLValue(node.left, ctx.pushCont(function (lval) {
             if (node.operator === '=') {
-                return env.evaluate(node.right, ctx.pushCont(function (val) {
-                    return lval.set(val, ctx.pushCont(function () {
-                        return ctx.succeed(val);
+                env.evaluate(node.right, ctx.pushCont(function (val) {
+                    lval.set(val, ctx.pushCont(function () {
+                        ctx.succeed(val);
                     }));
                 }));
             }
             else {
                 // Force the left side before we evaluate the right side.
-                ctx.pushCont(function (a) {
-                    return force(a, ctx.pushCont(function (a) {
-                        return env.evaluateForced(node.right, ctx.pushCont(function (b) {
+                lval.get(ctx.pushCont(function (a) {
+                    force(a, ctx.pushCont(function (a) {
+                        env.evaluateForced(node.right,
+                                           ctx.pushCont(function (b) {
                             try {
                                 var res = a[assignment_to_binary_op[node.operator]](b);
-                                return lval.set(res, ctx.pushCont(function () {
-                                    return ctx.succeed(res);
+                                lval.set(res, ctx.pushCont(function () {
+                                    ctx.succeed(res);
                                 }));
                             }
                             catch (e) {
-                                return ctx.fail(e);
+                                ctx.fail(e);
                             }
                         }));
                     }));
-                });
-                return lval.get(ctx);
+                }));
             }
-        });
-        return env.evaluateLValue(node.left, ctx);
+        }));
     },
 
     ObjectLiteral: function (node, env, ctx) {
@@ -1224,34 +1289,36 @@ var evaluate_type = {
         var res = {};
 
         function do_props(i) {
-            if (i == props.length)
-                return ctx.succeed(res);
+            if (i == props.length) {
+                ctx.succeed(res);
+                return;
+            }
 
-            return env.evaluate(props[i].value, ctx.pushCont(function (val) {
+            env.evaluate(props[i].value, ctx.pushCont(function (val) {
                 res[props[i].name] = val;
-                return do_props(i + 1);
+                do_props(i + 1);
             }));
         }
 
-        return do_props(0);
+        do_props(0);
     },
 
     ArrayLiteral: function (node, env, ctx) {
-        return evaluateMulti(env.evaluate.bind(env), node.elements, ctx);
+        evaluateMulti(env.evaluate.bind(env), node.elements, ctx);
     },
 
     ComprehensionMapExpression: evaluate_comprehension,
     ComprehensionConcatMapExpression: function (node, env, ctx) {
-        return evaluate_comprehension(node, env, ctx.pushCont(function (res) {
-            return res.invokeMethod('concat', [], env, ctx);
+        evaluate_comprehension(node, env, ctx.pushCont(function (res) {
+            res.invokeMethod('concat', [], env, ctx);
         }));
     },
 };
 
 function lvalue_handler_to_rvalue_handler(lvalue_handler) {
     return function (node, env, ctx) {
-        return lvalue_handler(node, env, ctx.pushCont(function (lval) {
-            return lval.get(ctx);
+        lvalue_handler(node, env, ctx.pushCont(function (lval) {
+            lval.get(ctx);
         }));
     };
 }
@@ -1264,9 +1331,9 @@ for (var t in evaluate_lvalue_type) {
 Environment.prototype.evaluate = function (node, ctx) {
     var handler = evaluate_type[node.type];
     if (handler)
-        return handler(node, this, ctx);
+        handler(node, this, ctx);
     else
-        return ctx.fail(new Error(node.type + " not yet implemented"));
+        ctx.fail(new Error(node.type + " not yet implemented"));
 };
 
 // Builtins
@@ -1277,8 +1344,8 @@ builtins.bind('undefined', iundefined);
 builtins.bind('range', builtin(range));
 
 builtins.bind('lazy', deferred_builtin(function (args, env, ctx) {
-    return ctx.succeed(new ILazy(function (ctx2) {
-        return env.evaluateForced(args[0], ctx2);
+    ctx.succeed(new ILazy(function (ctx2) {
+        env.evaluateForced(args[0], ctx2);
     }));
 }));
 
