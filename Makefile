@@ -1,21 +1,25 @@
 PEGJS:=./node_modules/pegjs/bin/pegjs
 GRAMMAR:=server/grammar.pegjs
+PARSERS:=server/parser.js client/parser.js
 
-.PHONY: parsers test start-server clean-sessions
+.PHONY: all test start-server clean clean-sessions
 
-parsers: node_modules/pegjs server/parser.js client/parser.js
+all: start-server
 
 server/parser.js: $(GRAMMAR)
-	$(PEGJS) $< $@
+	$(PEGJS) --cache $< $@
 
 client/parser.js: $(GRAMMAR)
-	$(PEGJS) -e window.Parser $< $@
+	$(PEGJS) --cache -e window.Parser $< $@
 
-test: node_modules/nodeunit parsers
+test: $(PARSERS)
 	node ./node_modules/nodeunit/bin/nodeunit server/test
 
-start-server: parsers
+start-server: $(PARSERS)
 	(cd server; node ./server.js)
 
+clean:
+	rm -f $(PARSERS)
+
 clean-sessions:
-	rm /tmp/session-*.json
+	rm -f /tmp/session-*.json
