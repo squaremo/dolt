@@ -795,8 +795,10 @@ function apply_deferred_arg(defarg, env, elem, ctx) {
         break;
 
     case 2:
-        if (defarg[0].type !== 'Variable')
+        if (defarg[0].type !== 'Variable') {
             ctx.fail(new Error('expected variable, got ' + defarg[0].type));
+            return;
+        }
 
         varname = defarg[0].name;
         body = defarg[1];
@@ -804,6 +806,7 @@ function apply_deferred_arg(defarg, env, elem, ctx) {
 
     case 3:
         ctx.fail(new Error('deferred argument looks strange'));
+        return;
     }
 
     subenv = new Environment(subenv);
@@ -1001,8 +1004,10 @@ Environment.prototype.variable = function (symbol, ctx) {
     var env = this;
     while (!(symbol in env.frame)) {
         env = env.parent;
-        if (!env)
+        if (!env) {
             ctx.fail(new Error("unbound variable '" + symbol + "'"));
+            return;
+        }
     }
 
     ctx.succeed({
