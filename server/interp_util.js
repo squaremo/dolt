@@ -23,7 +23,7 @@ function runFully(env, expr, callback) {
     // reference to the lazy with the resolved value.
     function registerLazies(parent, under) {
         var val = parent[under];
-        if (typeof(val) !== 'object')
+        if (typeof(val) !== 'object' || val === null)
             return;
         
         if (val['!'] !== 'lazy') {
@@ -78,7 +78,7 @@ function runFully(env, expr, callback) {
 
 // Convert 'cons' specials in the given extended JSON into arrays
 function resolveSequences(val) {
-    if (typeof(val) === 'object' && val['!'] === 'cons') {
+    if (typeof(val) === 'object' && val !== null && val['!'] === 'cons') {
         var tail = val.tail = resolveSequences(val.tail);
         if (tail instanceof Array) {
             tail.unshift(val.head);

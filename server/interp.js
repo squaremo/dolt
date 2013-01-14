@@ -248,6 +248,13 @@ var iundefined = singleton_itype('undefined', {
     renderJSON: function () { return {'!': 'undefined'}; },
 });
 
+var inull = singleton_itype('null', {
+    truthy: function () { return false; },
+    toString: function() { return 'null'; },
+    toJSValue: function () { return null; },
+    renderJSON: function () { return null; },
+});
+
 // booleans
 
 var IBoolean = itype('boolean', IValue, function (value) {
@@ -324,6 +331,8 @@ var js_type_to_ivalue = {
     object: function (val) {
         if (val instanceof IValue)
             return val;
+        else if (val === null)
+            return inull;
         else if (val instanceof Array)
             return new IArray(val);
         else
@@ -384,7 +393,7 @@ IValue.renderJSON = function (val, callback) {
 // Decode the JSON representation of a value back into the
 // corresponding JS value / IValue.
 IValue.decodeJSON = function (json) {
-    if (typeof(json) !== 'object')
+    if (json === null || typeof(json) !== 'object')
         return json;
 
     if (json instanceof Array)
@@ -1145,6 +1154,10 @@ var evaluate_type = {
     Literal: evaluate_literal,
     NumericLiteral: evaluate_literal,
     StringLiteral: evaluate_literal,
+
+    NullLiteral: function (_node, _env, ctx) {
+        ctx.succeed(inull);
+    },
 
     EmptyStatement: function (node, env, ctx) {
         ctx.succeed(iundefined);

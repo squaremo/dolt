@@ -52,7 +52,6 @@ var Widget = (function() {
         }
     });
 
-
     function Widget() {
     }
 
@@ -194,10 +193,11 @@ var Widget = (function() {
     };
 
     Widget.widgetize = function (val, parent) {
-        if (typeof(val) === 'object') {
+        // typeof(null) === 'object', but we want it to be cheated as
+        // a primitive
+        if (val !== null && typeof(val) === 'object') {
             if (Array.isArray(val))
                 return new ArrayWidget(val, parent);
-
             var type = val['!'];
             if (type) {
                 var handler = widgetizeSpecial[type];
@@ -560,8 +560,8 @@ function unparseAsHTML(node) {
     function punc(chars) {
         return document.createTextNode(chars);
     }
-    function val(node) {
-        return $('<span/>').addClass(node.type).text(node.value);
+    function val(node, text) {
+        return $('<span/>').addClass(node.type).text(text || node.value);
     }
     function kw(chars) {
         return $('<span/>').addClass('keyword').text(chars);
@@ -642,8 +642,9 @@ function unparseAsHTML(node) {
         return flatlist(punc('"'), $.map(node.elements, unparsePatternAsHTML), punc('"'));
     case 'NumericLiteral':
     case 'BooleanLiteral':
-    case 'NullLiteral':
         return val(node);
+    case 'NullLiteral':
+        return val(node, 'null');
     case 'ArrayLiteral':
         return flatlist(punc('['), commafied(node.elements, unparseAsHTML), punc(']'));
     case 'ObjectLiteral':
