@@ -7,24 +7,24 @@ function check(expr, expect) {
     return function (assert) {
         assert.expect(1);
         var env = new interp.Environment(interp.builtins);
-        interp_util.runFully(env, expr, function (status, res) {
-            if (typeof(status) === 'string') {
-                if (status === 'complete') {
-                    res = interp_util.resolveSequences(res);
+        interp_util.runFully(env, expr, function (status, val) {
+            switch (status) {
+            case 'complete':
+                val = interp_util.resolveSequences(val);
 
-                    // Compare JSON strings, because node's assert.deepEqual
-                    // does not check for strict equality
-                    assert.equal(JSON.stringify(res), JSON.stringify(expect));
-                    assert.done();
-                }
-            }
-            else {
+                // Compare JSON strings, because node's assert.deepEqual
+                // does not check for strict equality
+                assert.equal(JSON.stringify(val), JSON.stringify(expect));
+                assert.done();
+                break;
+
+            case 'error':
                 // nodeunit doesn't do a good job of presenting exceptions
                 // that lack a stack trace.
-                if (!status.stack)
-                    status = new Error(status.message);
+                if (!val.stack)
+                    val = new Error(val.message);
 
-                throw status;
+                throw val;
             }
         });
     };
