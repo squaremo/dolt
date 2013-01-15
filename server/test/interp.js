@@ -47,6 +47,8 @@ function checkError(expr) {
     };
 }
 
+module.exports.parseError = checkError("foo bar");
+
 module.exports.preferObjectLiteral
     = check('{foo:"bar"}', {foo:"bar"});
 

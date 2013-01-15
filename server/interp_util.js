@@ -21,6 +21,30 @@ function runFully(env, expr, callback) {
     // error.
     var aborted = false;
 
+    try {
+        var res = env.run(expr, function (id, err, val) {
+            if (err) {
+                aborted = true;
+                callback("error", err);
+            }
+
+            // Replace the lazy with the value
+            lazies[id](val);
+            delete lazies[id];
+            callCallback();
+        });
+
+        var res_holder = {res: res};
+        registerLazies(res_holder, 'res');
+        callCallback();
+    }
+    catch (e) {
+        if (!aborted) {
+            aborted = true;
+            callback("error", e);
+        }
+    }
+
     // Find any lazies in the JSON at parent[under] and add them to
     // 'lazies'.  We need the parent so that we can replace the
     // reference to the lazy with the resolved value.
@@ -50,20 +74,6 @@ function runFully(env, expr, callback) {
         }
     }
 
-    var res = env.run(expr, function (id, err, val) {
-        if (err) {
-            aborted = true;
-            callback("error", err);
-        }
-
-        // Replace the lazy with the value
-        lazies[id](val);
-        delete lazies[id];
-        callCallback();
-    });
-
-    var res_holder = {res: res};
-
     function callCallback() {
         if (aborted)
             return;
@@ -78,8 +88,6 @@ function runFully(env, expr, callback) {
         callback(status, res_holder.res);
     }
 
-    registerLazies(res_holder, 'res');
-    callCallback();
 }
 
 // Convert 'cons' specials in the given extended JSON into arrays

@@ -98,8 +98,6 @@ Context.prototype.run = function (start_fun) {
 
     for (;;) {
         while (this.state === 'value') {
-            // Call the next continuation.  This loop is the core of
-            // the interpreter.
             val = this.value;
             this.state = 'empty';
             this.value = null;
