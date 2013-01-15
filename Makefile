@@ -2,7 +2,7 @@ PEGJS:=./node_modules/pegjs/bin/pegjs
 GRAMMAR:=server/grammar.pegjs
 PARSERS:=server/parser.js client/parser.js
 
-.PHONY: all test start-server clean clean-sessions
+.PHONY: all parsers test postinstall link-js start-server clean-sessions
 
 all: start-server
 
@@ -16,6 +16,15 @@ test: $(PARSERS)
 	node ./node_modules/nodeunit/bin/nodeunit server/test
 
 start-server: $(PARSERS)
+
+postinstall: parsers link-js
+
+link-js: client/pmd.js
+
+client/pmd.js:
+	ln -s ../node_modules/pmd/index.js client/pmd.js
+
+start-server: parsers link-js
 	(cd server; node ./server.js)
 
 clean:

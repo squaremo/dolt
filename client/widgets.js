@@ -9,70 +9,46 @@ function inheritFrom(parentConstructor) {
 }
 
 var Widget = (function() {
-    function PrimitiveWidget() {}
-
-    PrimitiveWidget.by_type = {};
-
-    PrimitiveWidget.define = function (type, methods) {
-        var singleton = new PrimitiveWidget();
-        for (var m in methods)
-            singleton[m] = methods[m];
-
-        PrimitiveWidget.by_type[type] = singleton;
-    };
-
-    'visualSize render'.split(' ').forEach(function (name) {
-        Widget[name] = function (val /* ... */) {
-            if (val instanceof Widget) {
-                return val[name].apply(val,
-                                   Array.prototype.slice.call(arguments, 1));
-            }
-            else {
-                var target = PrimitiveWidget.by_type[typeof(val)]
-                                             || PrimitiveWidget.prototype;
-                return target[name].apply(undefined, arguments);
-            }
-        };
-    });
-
-    PrimitiveWidget.prototype.visualSize = function (val) {
-        return String(val).length;
-    };
-
-    PrimitiveWidget.prototype.render = function (val, appender) {
-        appender($('<code/>').addClass(typeof(val)).text(String(val)));
-    };
-
-
-    PrimitiveWidget.define('string', {
-        visualSize: function (val) { return val.length + 2; },
-
-        render: function (val, appender) {
-            appender($('<code/>').addClass(typeof(val)).text('"' + val + '"'));
-        }
-    });
 
     function Widget() {
     }
 
-    Widget.prototype.visualSize = function () {
-        return this.size;
-    };
+    var render = procedure('render');
+    var visualSize = procedure('visualSize');
+
+    // primitives are given as the value rather than a widget
+    render.method(Object, Function, function(val, appender) {
+        appender($('<code/>').addClass(typeof(val)).text(String(val)));
+    });
+    visualSize.method(Object, function(val) {
+        return String(val).length;
+    });
+
+    render.method(String, Function, function(str, appender) {
+        appender($('<code/>').addClass('string').text('"' + str + '"'));
+    });
+    visualSize.method(String, function(str) {
+        return str.length + 2;
+    });
+
+    // For subclasses
+    visualSize.method(Widget, function(w) {
+        return w.size;
+    });
 
     Widget.prototype.isCompact = function () {
         return !isNaN(this.size);
     };
 
-    function ArrayWidget(arr, parent) {
+    function ArrayWidget(arr) {
         this.arr = arr;
-        this.parent = parent;
 
         var size = 0;
         var separators = 0;
 
         for (var i = 0; i < arr.length; i++) {
             arr[i] = Widget.widgetize(arr[i], this);
-            size += Widget.visualSize(arr[i]) + separators;
+            size += visualSize(arr[i]) + separators;
             separators = 2;
         }
 
@@ -81,15 +57,16 @@ var Widget = (function() {
 
     ArrayWidget.prototype = inheritFrom(Widget);
 
-    ArrayWidget.prototype.render = function (appender) {
+    render.method(ArrayWidget, Function, function(aw, appender) {
         appender('[');
+        var arr = aw.arr;
 
-        if (this.isCompact()) {
+        if (aw.isCompact()) {
             var sep = '';
 
-            for (var i = 0; i < this.arr.length; i++) {
+            for (var i = 0; i < arr.length; i++) {
                 appender(sep);
-                Widget.render(this.arr[i], appender);
+                render(arr[i], appender);
                 sep = ', ';
             }
         }
@@ -97,25 +74,24 @@ var Widget = (function() {
             var tab = $('<table/>').addClass('array');
             appender(tab);
 
-            for (var i = 0; i < this.arr.length; i++) {
+            for (var i = 0; i < arr.length; i++) {
                 var td = $('<td/>');
                 tab.append($('<tr/>').append(td));
-                Widget.renderInto(this.arr[i], td);
+                Widget.renderInto(arr[i], td);
                 if (i < this.arr.length - 1)
                     td.append(',');
             }
         }
 
         appender(']');
-    };
+    });
 
     // RE matching keys that were encoded to differentiate them from
     // the magic '!' type property.
     var encoded_property_name_re = /^!+$/;
 
-    function ObjectWidget(obj, parent) {
+    function ObjectWidget(obj) {
         this.obj = obj;
-        this.parent = parent;
         this.keys = Object.getOwnPropertyNames(obj).sort();
 
         var size = 0;
@@ -139,7 +115,7 @@ var Widget = (function() {
                 obj[k] = Widget.widgetize(obj[k], this);
             }
 
-            size += Widget.visualSize(obj[k]) + k.length + separators;
+            size += visualSize(obj[k]) + k.length + separators;
             separators = 4;
         }
 
@@ -154,18 +130,18 @@ var Widget = (function() {
 
     ObjectWidget.prototype = inheritFrom(Widget);
 
-    ObjectWidget.prototype.render = function (appender) {
+    render.method(ObjectWidget, Function, function (ow, appender) {
         appender('{');
 
-        if (this.isCompact()) {
+        if (ow.isCompact()) {
             var sep = '';
 
-            for (var i = 0; i < this.keys.length; i++) {
+            for (var i = 0; i < ow.keys.length; i++) {
                 appender(sep);
-                var k = this.keys[i];
+                var k = ow.keys[i];
                 appender(k);
                 appender(': ');
-                Widget.render(this.obj[k], appender);
+                Widget.render(ow.obj[k], appender);
                 sep = ', ';
             }
         }
@@ -173,25 +149,39 @@ var Widget = (function() {
             var tab = $('<table/>').addClass('object');
             appender(tab);
 
-            for (var i = 0; i < this.keys.length; i++) {
-                var k = this.keys[i];
+            for (var i = 0; i < ow.keys.length; i++) {
+                var k = ow.keys[i];
                 var td = $('<td/>');
                 tab.append($('<tr/>')
                            .append($('<td/>').addClass('key').text(k + ':'))
                            .append(td));
-                Widget.renderInto(this.obj[k], td);
-                if (i < this.keys.length - 1)
+                Widget.renderInto(ow.obj[k], td);
+                if (i < ow.keys.length - 1)
                     td.append(',');
             }
         }
 
         appender('}');
-    };
+    });
 
-    var widgetizeSpecial = {
-        undefined: function () { return undefined; },
-    };
+    // For types given by a '!' annotation. We make this a generic
+    // procedure so it can be added to elsewhere.
+    var widgetizeSpecial = procedure('widgetizeSpecial');
+    // Transform unsupplied parent arguments to nulls, so we can
+    // specialise on Object if we're OK with missing values
+    widgetizeSpecial.method(String, Object, undefined, function(type, val) {
+        return widgetizeSpecial(type, val, null);
+    });
 
+    widgetizeSpecial.method(String, Object, Object, function() {
+        return 'UNKNOWN TYPE';
+    });
+    widgetizeSpecial.method('undefined', Object, Object, function() {
+        return undefined;
+    });
+
+    // This is easier to leave explicit -- it's difficult to
+    // dispatch on 'primitive' values as distinct from Objects
     Widget.widgetize = function (val, parent) {
         // typeof(null) === 'object', but we want it to be cheated as
         // a primitive
@@ -199,15 +189,8 @@ var Widget = (function() {
             if (Array.isArray(val))
                 return new ArrayWidget(val, parent);
             var type = val['!'];
-            if (type) {
-                var handler = widgetizeSpecial[type];
-                if (handler)
-                    return handler(val, parent);
-                else
-                    return "UNKNOWN TYPE";
-            }
-
-            return new ObjectWidget(val, parent);
+            if (type) return widgetizeSpecial(type, val, parent);
+            return new ObjectWidget(val);
         }
         else {
             // Primitive values are not turned into widgets
@@ -216,9 +199,10 @@ var Widget = (function() {
     }
 
     Widget.registerSpecial = function (name, constr) {
-        widgetizeSpecial[name] = function (val, parent) {
-            return new constr(val, parent);
-        };
+        widgetizeSpecial.method(
+            name, Object, Object, function(_name, val, parent) {
+                return new constr(val, parent);
+            });
     };
 
     Widget.renderInto = function (val, container) {
@@ -241,8 +225,18 @@ var Widget = (function() {
             }
         }
 
-        Widget.render(val, appender);
+        render(val, appender);
         flush();
+    }
+
+    // So other modules can access these
+    Widget.render = render;
+    Widget.visualSize = visualSize;
+
+    Widget.renderCompactlyInto = function (val, container) {
+        var collapsed = $('<div/>').addClass('collapsed');
+        container.append(collapsed);
+        return Widget.renderInto(val, collapsed);
     }
 
     return Widget;
@@ -264,47 +258,45 @@ var Widget = (function() {
 
     TableWidget.prototype = inheritFrom(Widget);
 
-    TableWidget.prototype.render = function (appender) {
-        var self = this;
-
-        this.container = $('<div/>');
+    Widget.render.method(TableWidget, Function, function (tw, appender) {
+        tw.container = $('<div/>');
         appender(this.container);
 
-        var buttons = $('<span/>').addClass('buttons').appendTo(this.container);
-        this.installButtons(buttons);
-        this.tbody = $('<tbody/>');
+        var buttons = $('<span/>').addClass('buttons').appendTo(tw.container);
+        tw.installButtons(buttons);
+        tw.tbody = $('<tbody/>');
 
         // The maximum width of the table, based on the viewport size
         var maxwidth = $(window).width() * 0.95
 
         // btable is the table that will contain the tbody; bdiv wraps
         // btable.
-        this.btable = $('<table/>').css('table-layout', 'auto');
+        tw.btable = $('<table/>').css('table-layout', 'auto');
         var bdiv = $('<div/>').css({
             overflow: 'auto',
             'max-height': $(window).height() * 0.8,
             'max-width': maxwidth
         });
-        this.container.append(bdiv.append(this.btable));
+        tw.container.append(bdiv.append(this.btable));
 
         // Construct the column headers
         var hrow = $('<tr/>');
-        for (var i = 0; i < this.cols.length; i++) {
-            hrow.append(this.makeColumnHeader(this.cols[i]));
+        for (var i = 0; i < tw.cols.length; i++) {
+            hrow.append(tw.makeColumnHeader(tw.cols[i]));
         }
 
-        this.thead = $('<thead/>').append(hrow);
-        this.btable.append(this.thead).append(this.tbody);
+        tw.thead = $('<thead/>').append(hrow);
+        tw.btable.append(tw.thead).append(tw.tbody);
 
-        this.populateTBody();
+        tw.populateTBody();
 
         // Now that the browser has laid out the table, freeze the
         // column widths.
         var totalwidth = 0;
         hrow.children('th').each(function (i) {
-            var th = $(this);
+            var th = $(tw);
             var width = th.width();
-            self.cols[i].width = width;
+            tw.cols[i].width = width;
             totalwidth += width;
         });
 
@@ -313,33 +305,33 @@ var Widget = (function() {
             'width': totalwidth
         };
 
-        this.btable.css(tablecss);
+        tw.btable.css(tablecss);
 
         // Construct a separate table to contain the column headers
         // (so that the body table can be scrolled vertically while
         // the column headers remain visible).  hdiv contains this
         // table.  The padding right is a fudge to avoid an anomaly
         // when the table is scrolled to the extreme right.
-        this.htable = $('<table/>').css(tablecss).css('padding-right', 100).append(this.thead);
+        tw.htable = $('<table/>').css(tablecss).css('padding-right', 100).append(tw.thead);
         var hdiv = $('<div/>').css({
             overflow: 'hidden',
             'max-width': maxwidth
-        }).append(this.htable).insertBefore(bdiv);
+        }).append(tw.htable).insertBefore(bdiv);
 
         function setWidths(elems) {
             elems.each(function (i) {
-                $(this).css('width', self.cols[i].width);
+                $(tw).css('width', tw.cols[i].width);
             });
         }
 
-        setWidths(this.thead.children('tr').children('th'));
-        setWidths(this.tbody.children('tr:first').children('td'));
+        setWidths(tw.thead.children('tr').children('th'));
+        setWidths(tw.tbody.children('tr:first').children('td'));
 
         // Lock the scrolling of the header table to the body table.
         bdiv.scroll(function () {
             hdiv.scrollLeft(bdiv.scrollLeft());
         });
-    };
+    });
 
     function sortByKey(rows, key, descending) {
         var i = 0;

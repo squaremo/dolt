@@ -8,7 +8,8 @@
         "node-uuid": "",
         "promisify": "",
         "sockjs": "",
-        "mu2": ""
+        "mu2": "",
+        "pmd": "git+https://github.com/squaremo/js-pmd.git"
     },
     "devDependencies": {
         "nodeunit": "",
@@ -16,6 +17,7 @@
     },
     "scripts" : {
         "test" : "make test",
-        "start": "make start-server"
+        "start": "make start-server",
+        "postinstall": "make postinstall"
     }
 }
