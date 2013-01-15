@@ -391,15 +391,15 @@ IValue.renderJSON = function (val, callback) {
 // Decode the JSON representation of a value back into the
 // corresponding JS value / IValue.
 IValue.decodeJSON = function (json) {
-    if (json === null || typeof(json) !== 'object')
+    if (typeof(json) !== 'object' || json === null)
         return json;
 
     if (json instanceof Array)
-        return new IArray.decodeJSON(json);
+        return IArray.decodeJSON(json);
 
     var type = json['!'];
     if (type === undefined)
-        return new IObject.decodeJSON(json);
+        return IObject.decodeJSON(json);
     else
         return json_decoder[type](json);
 };
@@ -472,7 +472,7 @@ function builtin(fun) {
                 for (var i = 0; i < args.length; i++)
                     evaled_args[i] = IValue.to_js(evaled_args[i]);
 
-                ctx.succeed(fun.apply(null, evaled_args));
+                ctx.succeed(IValue.from_js(fun.apply(null, evaled_args)));
             }
             catch (e) {
                 ctx.fail(e);
@@ -503,7 +503,7 @@ function promised_builtin(fun) {
             }
 
             ctx.pause();
-            p.then(function (val) { ctx.resume(val); },
+            p.then(function (val) { ctx.resume(IValue.from_js(val)); },
                    function (err) { ctx.resumeFail(err); });
         }));
     };
@@ -513,7 +513,11 @@ function promised_builtin(fun) {
 // Objects
 
 var IObject = itype('object', IValue, function (obj) {
-    this.obj = obj;
+    // IObjects always hold IValues
+    this.obj = {};
+
+    for (var p in obj)
+        this.obj[p] = IValue.from_js(obj[p]);
 });
 
 IObject.prototype.truthy = function () {
@@ -529,10 +533,6 @@ IObject.prototype.toString = function () {
     return util.inspect(this.obj);
 };
 
-IObject.prototype.toJSValue = function () {
-    return this.obj;
-};
-
 IObject.prototype.getProperty = function (key, ctx) {
     key = IValue.to_js(key);
     // Avoid the prototype chain
@@ -540,8 +540,8 @@ IObject.prototype.getProperty = function (key, ctx) {
 };
 
 IObject.prototype.setProperty = function (key, val, ctx) {
+    // AssignmentOperator already coerced val to an IValue
     this.obj[IValue.to_js(key)] = val;
-    // XXX this looks fishy
     ctx.succeed();
 };
 
@@ -796,8 +796,8 @@ function apply_deferred_arg(defarg, env, elem, ctx) {
 
         // If the element is an object, turn it into a frame in the
         // environment
-        if (typeof(elem) === 'object')
-            subenv = new Environment(subenv, elem);
+        if (elem instanceof IObject)
+            subenv = new Environment(subenv, elem.obj);
 
         break;
 
@@ -884,8 +884,8 @@ function range(from, to, step) {
 
 // Arrays
 
-var IArray = itype('array', IObject, function (obj) {
-    this.obj = obj;
+var IArray = itype('array', IObject, function (arr) {
+    this.obj = arr.map(IValue.from_js);
 });
 
 IArray.prototype.toSequence = function () {
@@ -924,7 +924,7 @@ IArray.prototype.renderJSON = function (callback) {
 };
 
 IArray.decodeJSON = function (json) {
-    return json.map(IValue.decodeJSON);
+    return new IArray(json.map(IValue.decodeJSON));
 };
 
 
@@ -1273,7 +1273,7 @@ var evaluate_type = {
         env.evaluateLValue(node.left, ctx.pushCont(function (lval) {
             if (node.operator === '=') {
                 env.evaluate(node.right, ctx.pushCont(function (val) {
-                    lval.set(val, ctx.pushCont(function () {
+                    lval.set(IValue.from_js(val), ctx.pushCont(function () {
                         ctx.succeed(val);
                     }));
                 }));
@@ -1305,22 +1305,23 @@ var evaluate_type = {
         var res = {};
 
         function do_props(i) {
-            if (i == props.length) {
-                ctx.succeed(res);
-                return;
-            }
-
-            env.evaluate(props[i].value, ctx.pushCont(function (val) {
-                res[props[i].name] = val;
-                do_props(i + 1);
-            }));
+            if (i == props.length)
+                ctx.succeed(new IObject(res));
+            else
+                env.evaluate(props[i].value, ctx.pushCont(function (val) {
+                    res[props[i].name] = val;
+                    do_props(i + 1);
+                }));
         }
 
         do_props(0);
     },
 
     ArrayLiteral: function (node, env, ctx) {
-        evaluateMulti(env.evaluate.bind(env), node.elements, ctx);
+        evaluateMulti(env.evaluate.bind(env), node.elements,
+                      ctx.pushCont(function (arr) {
+            ctx.succeed(new IArray(arr));
+        }));
     },
 
     ComprehensionMapExpression: evaluate_comprehension,
