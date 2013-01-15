@@ -39,13 +39,9 @@ function checkError(expr) {
         assert.expect(1);
         var env = new interp.Environment(interp.builtins);
         interp_util.runFully(env, expr, function (status, res) {
-            if (typeof(status) === 'string') {
-                if (status === 'complete')
-                    assert.done();
-            }
-            else {
-                // An exception
+            if (status === 'error') {
                 assert.ok(true);
+                assert.done();
             }
         });
     };
@@ -65,6 +61,8 @@ module.exports.trivialReturn
 
 module.exports.earlyReturn
     = check('function early(x) { return x + 1; x + 2; }; early(8)', 9);
+
+module.exports.throe = checkError("throw 'bang'");
 
 module.exports.katch
     = check('var ex; try { ex = (function () { throw "bang"; 42; })(); } catch (e) { ex = e; } ex;', 'bang');

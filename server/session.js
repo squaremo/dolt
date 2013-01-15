@@ -135,21 +135,33 @@ Session.prototype.eval = function (expr, variable) {
 
         interp_util.runFully(self.env, expr, function (status, json) {
             self.toplevel.bind(history_entry.variable, json); // %% in error case too?
-            if (status === 'incomplete') {
+            switch (status) {
+            case 'incomplete':
                 history_entry.result = interp_util.resolveSequences(json);
                 self.saveState();
-            }
-            else if (status === 'complete') {
+                break;
+
+            case 'complete':
                 history_entry.in_progress = false;
                 history_entry.result = interp_util.resolveSequences(json);
                 self.saveState();
                 d.resolve(history_entry);
-            }
-            else {
+                break;
+
+            case 'error':
+                // An error.
+                var err = json;
+                if (err instanceof Error)
+                    err = err.message;
+
+                // We may have already had an incomplete result,
+                // setting the 'result' property.
+                delete history_entry.result;
                 history_entry.in_progress = false;
-                history_entry.error = status.toString();
+                history_entry.error = String(err);
                 self.saveState();
                 d.resolve(history_entry);
+                break;
             }
         });
 

@@ -16,6 +16,9 @@ function runFully(env, expr, callback) {
     // result JSON, so that we can substitute the resolved values as
     // they arrive.
     var lazies = {};
+
+    // A flag to ensure we don't make further callbacks after an
+    // error.
     var aborted = false;
 
     // Find any lazies in the JSON at parent[under] and add them to
@@ -25,7 +28,7 @@ function runFully(env, expr, callback) {
         var val = parent[under];
         if (typeof(val) !== 'object' || val === null)
             return;
-        
+
         if (val['!'] !== 'lazy') {
             if (val instanceof Array) {
                 for (var i = 0; i < val.length; i++)
@@ -40,7 +43,7 @@ function runFully(env, expr, callback) {
         else {
             lazies[val.id] = function (resolved) {
                 parent[under] = resolved;
-                
+
                 // The resolved value might itself contain lazies
                 registerLazies(parent, under);
             };
@@ -50,7 +53,7 @@ function runFully(env, expr, callback) {
     var res = env.run(expr, function (id, err, val) {
         if (err) {
             aborted = true;
-            callback(err);
+            callback("error", err);
         }
 
         // Replace the lazy with the value
@@ -62,6 +65,9 @@ function runFully(env, expr, callback) {
     var res_holder = {res: res};
 
     function callCallback() {
+        if (aborted)
+            return;
+
         var status = 'complete';
 
         for (var p in lazies) {
