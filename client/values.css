@@ -25,7 +25,6 @@ form.prompt label:after { content: '> '; }
 }
 
 #sessions nav {
-    width: 18em;
     position: absolute;
 }
 
