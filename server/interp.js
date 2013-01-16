@@ -946,7 +946,7 @@ ITable.prototype.renderJSON = function (callback) {
     return {
         '!': 'table',
         data: IValue.renderJSON(this.data, callback),
-        columns: IValue.renderJSON(this.data, callback)
+        columns: IValue.renderJSON(this.columns, callback)
     };
 };
 
