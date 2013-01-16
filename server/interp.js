@@ -326,24 +326,35 @@ var js_type_to_ivalue = {
     number: function (val) { return new INumber(val); },
     boolean: function (val) { return new IBoolean(val); },
     string: function (val) { return new IString(val); },
-    object: function (val) {
-        if (val instanceof IValue)
+    object: function (val, external) {
+        if (val instanceof IValue) {
             return val;
-        else if (val === null)
+        }
+        else if (val === null) {
             return inull;
-        else if (val instanceof Array)
-            return new IArray(val);
-        else
-            return new IObject(val);
+        }
+        else if (external) {
+            if (val instanceof Array)
+                return new IArray(val, external);
+            else
+                return new IObject(val, external);
+        }
+        else {
+            throw new Error("bare object encountered");
+        }
     },
 };
 
 // Convert a value, that may be a JS value or already an IValue, to
 // the corresponding IValue.
-IValue.from_js = function (jsval) {
+//
+// The 'external' flag indicates that the value comes from outside the
+// interpreter.  Normally, objects and arrays must be in their IValue
+// form inside the interpreter.
+IValue.from_js = function (jsval, external) {
     var convert = js_type_to_ivalue[typeof(jsval)];
     if (convert)
-        return convert(jsval);
+        return convert(jsval, external);
     else
         throw new Error("mysterious value " + jsval);
 };
@@ -472,7 +483,8 @@ function builtin(fun) {
                 for (var i = 0; i < args.length; i++)
                     evaled_args[i] = IValue.to_js(evaled_args[i]);
 
-                ctx.succeed(IValue.from_js(fun.apply(null, evaled_args)));
+                ctx.succeed(IValue.from_js(fun.apply(null, evaled_args),
+                                           true));
             }
             catch (e) {
                 ctx.fail(e);
@@ -503,7 +515,7 @@ function promised_builtin(fun) {
             }
 
             ctx.pause();
-            p.then(function (val) { ctx.resume(IValue.from_js(val)); },
+            p.then(function (val) { ctx.resume(IValue.from_js(val, true)); },
                    function (err) { ctx.resumeFail(err); });
         }));
     };
@@ -512,12 +524,12 @@ function promised_builtin(fun) {
 
 // Objects
 
-var IObject = itype('object', IValue, function (obj) {
+var IObject = itype('object', IValue, function (obj, external) {
     // IObjects always hold IValues
     this.obj = {};
 
     for (var p in obj)
-        this.obj[p] = IValue.from_js(obj[p]);
+        this.obj[p] = IValue.from_js(obj[p], external);
 });
 
 IObject.prototype.truthy = function () {
@@ -884,8 +896,10 @@ function range(from, to, step) {
 
 // Arrays
 
-var IArray = itype('array', IObject, function (arr) {
-    this.obj = arr.map(IValue.from_js);
+var IArray = itype('array', IObject, function (arr, external) {
+    this.obj = arr.map(function (val) {
+        return IValue.from_js(val, external);
+    });
 });
 
 IArray.prototype.toSequence = function () {
