@@ -133,8 +133,8 @@ Session.prototype.eval = function (expr, variable) {
 
         var d = when.defer();
 
-        interp_util.runFully(self.env, expr, function (status, json) {
-            self.toplevel.bind(history_entry.variable, json); // %% in error case too?
+        interp_util.runFully(self.env, expr, history_entry.variable,
+                             function (status, json) {
             switch (status) {
             case 'incomplete':
                 history_entry.result = interp_util.resolveSequences(json);

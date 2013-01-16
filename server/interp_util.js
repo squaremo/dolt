@@ -11,7 +11,7 @@ var interp = require('./interp');
 // - 'incomplete': There are still lazies to be resolved
 // - 'complete': All lazies have been resolved, evaluation is finished.
 // - An error object
-function runFully(env, expr, callback) {
+function runFully(env, expr, variable, callback) {
     // This maps lazy ids to a representation of their position in the
     // result JSON, so that we can substitute the resolved values as
     // they arrive.
@@ -22,7 +22,7 @@ function runFully(env, expr, callback) {
     var aborted = false;
 
     try {
-        var res = env.run(expr, function (id, err, val) {
+        var res = env.run(expr, variable, function (id, err, val) {
             if (err) {
                 aborted = true;
                 callback("error", err);

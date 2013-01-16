@@ -1006,14 +1006,14 @@ Environment.prototype.runSimple = function (p, cont, econt, dump_parse) {
 
 // Run an expression, and return the result as JSON.  See
 // ILazy.prototype.renderJSON for details of the callback.
-Environment.prototype.run = function (p, callback, dump_parse) {
+Environment.prototype.run = function (p, variable, callback, dump_parse) {
     p = parser.parse(p);
     if (dump_parse)
         console.log(JSON.stringify(p, null, "  "));
 
     var self = this;
     var lazy = new ILazy(function (ctx) { self.evaluate(p, ctx); });
-
+    this.bind(variable, lazy);
     return lazy.renderJSON(callback);
 };
 

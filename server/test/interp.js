@@ -7,7 +7,7 @@ function check(expr, expect) {
     return function (assert) {
         assert.expect(1);
         var env = new interp.Environment(interp.builtins);
-        interp_util.runFully(env, expr, function (status, val) {
+        interp_util.runFully(env, expr, 'res', function (status, val) {
             switch (status) {
             case 'complete':
                 val = interp_util.resolveSequences(val);
@@ -38,7 +38,7 @@ function checkError(expr) {
     return function (assert) {
         assert.expect(1);
         var env = new interp.Environment(interp.builtins);
-        interp_util.runFully(env, expr, function (status, res) {
+        interp_util.runFully(env, expr, 'res', function (status, res) {
             if (status === 'error') {
                 assert.ok(true);
                 assert.done();
