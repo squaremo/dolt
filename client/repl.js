@@ -68,27 +68,21 @@ $(function() {
     }
 
     function renderExpression(expr) {
-        return $('<kbd/>').addClass('history').append(hilite(expr));
-    }
-
-    function hilite(expr) {
-        try {
-            var ast = Parser.parse(expr);
-            return unparseAsHTML(ast);
-        } catch (e) {
-            return $('<span/>').addClass('syntax-error').text(expr);
-        }
+        var k = $('<kbd/>').addClass('history');
+        Widget.renderInto(new ExpressionWidget(expr), k);
+        return k;
     }
 
     function fillOutputSection(output, response) {
         output.empty();
 
         if (response.hasOwnProperty('result')) {
-            var res = Widget.widgetize(response.result);
+            var value = decodeValue(response.result);
+            console.log({decoded: response.result, to: value});
+            var res = Presentation.widgetize(value);
             if (res !== undefined) {
                 var resdiv = $('<div/>').addClass('result');
                 output.append(resdiv);
-
                 resdiv.append($('<var class="resultvar"/>')
                               .text(response.variable))
                        .append(' = ');
