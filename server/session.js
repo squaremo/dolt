@@ -128,42 +128,32 @@ Session.prototype.eval = function (expr, variable) {
         history_entry.in_progress = true;
         history_entry.expr = expr;
 
-        console.log("Saving: " + self.id);
-        self.saveState();
-
         var d = when.defer();
 
-        interp_util.runFully(self.env, expr, function (status, json) {
-            self.toplevel.bind(history_entry.variable, json); // %% in error case too?
-            switch (status) {
-            case 'incomplete':
-                history_entry.result = interp_util.resolveSequences(json);
-                self.saveState();
-                break;
-
-            case 'complete':
-                history_entry.in_progress = false;
-                history_entry.result = interp_util.resolveSequences(json);
-                self.saveState();
-                d.resolve(history_entry);
-                break;
-
-            case 'error':
-                // An error.
-                var err = json;
-                if (err instanceof Error)
-                    err = err.message;
-
-                // We may have already had an incomplete result,
-                // setting the 'result' property.
-                delete history_entry.result;
-                history_entry.in_progress = false;
-                history_entry.error = String(err);
-                self.saveState();
-                d.resolve(history_entry);
-                break;
-            }
+        var ev = new interp_util.Evaluation();
+        ev.on('update', function () {
+            history_entry.result = interp_util.resolveSequences(ev.json);
+            self.saveState();
         });
+        ev.on('done', function () {
+            history_entry.in_progress = false;
+            history_entry.result = interp_util.resolveSequences(ev.json);
+            self.saveState();
+            d.resolve(history_entry);
+        });
+        ev.on('error', function (err) {
+            if (err instanceof Error)
+                err = err.message;
+
+            // We may have already had an incomplete result,
+            // setting the 'result' property.
+            delete history_entry.result;
+            history_entry.in_progress = false;
+            history_entry.error = String(err);
+            self.saveState();
+            d.resolve(history_entry);
+        });
+        ev.evaluate(self.env, expr, history_entry.variable);
 
         return d.promise;
     });

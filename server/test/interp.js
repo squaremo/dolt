@@ -6,27 +6,26 @@ var interp_util = require('../interp_util');
 function check(expr, expect) {
     return function (assert) {
         assert.expect(1);
-        var env = new interp.Environment(interp.builtins);
-        interp_util.runFully(env, expr, function (status, res) {
-            if (typeof(status) === 'string') {
-                if (status === 'complete') {
-                    res = interp_util.resolveSequences(res);
 
-                    // Compare JSON strings, because node's assert.deepEqual
-                    // does not check for strict equality
-                    assert.equal(JSON.stringify(res), JSON.stringify(expect));
-                    assert.done();
-                }
-            }
-            else {
-                // nodeunit doesn't do a good job of presenting exceptions
-                // that lack a stack trace.
-                if (!status.stack)
-                    status = new Error(status.message);
+        var ev = new interp_util.Evaluation();
+        ev.on('done', function () {
+            var res = interp_util.resolveSequences(ev.json);
 
-                throw status;
-            }
+            // Compare JSON strings, because node's assert.deepEqual
+            // does not check for strict equality
+            assert.equal(JSON.stringify(res), JSON.stringify(expect));
+            assert.done();
         });
+        ev.on('error', function (err) {
+            // nodeunit doesn't do a good job of presenting exceptions
+            // that lack a stack trace.
+            if (!err.stack)
+                err = new Error(err.message);
+
+            throw err;
+        });
+
+        ev.evaluate(new interp.Environment(interp.builtins), expr, 'res');
     };
 }
 
@@ -37,13 +36,17 @@ function check(expr, expect) {
 function checkError(expr) {
     return function (assert) {
         assert.expect(1);
-        var env = new interp.Environment(interp.builtins);
-        interp_util.runFully(env, expr, function (status, res) {
-            if (status === 'error') {
-                assert.ok(true);
-                assert.done();
-            }
+
+        var ev = new interp_util.Evaluation();
+        ev.on('done', function () {
+            assert.done();
         });
+        ev.on('error', function (err) {
+            assert.ok(true);
+            assert.done();
+        });
+
+        ev.evaluate(new interp.Environment(interp.builtins), expr, 'res');
     };
 }
 
