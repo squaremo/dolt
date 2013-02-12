@@ -85,7 +85,7 @@ Widget.render.method(ExpressionWidget, Function, function(ew, appender) {
             }
         }
         function s() {
-        return document.createTextNode(' ');;
+            return document.createTextNode(' ');;
         }
 
         function flatlist() {
@@ -94,7 +94,7 @@ Widget.render.method(ExpressionWidget, Function, function(ew, appender) {
                 var elem = arguments[i];
                 if (Array.isArray(elem)) elem = flatlist.apply(null, elem);
                 elems = elems.add(elem);
-        }
+            }
             return elems;
         }
         
@@ -122,7 +122,7 @@ Widget.render.method(ExpressionWidget, Function, function(ew, appender) {
         function generatorexpr(node) {
             expr = unparseAsHTML(node.generate);
             if (node.name) {
-            expr = flatlist(varname(node.name), s(), kw('in'), s(), expr);
+                expr = flatlist(varname(node.name), s(), kw('in'), s(), expr);
             }
             if (node.guard) {
                 expr = flatlist(expr, s(), kw('if'), s(), unparseAsHTML(node.guard));
@@ -159,7 +159,7 @@ Widget.render.method(ExpressionWidget, Function, function(ew, appender) {
         case 'NullLiteral':
             return val(node, 'null');
         case 'ArrayLiteral':
-        return flatlist(punc('['), commafied(node.elements, unparseAsHTML), punc(']'));
+            return flatlist(punc('['), commafied(node.elements, unparseAsHTML), punc(']'));
         case 'ObjectLiteral':
             return flatlist(punc('{'), commafied(node.properties, function(pa) {
                 return flatlist(varname(pa.name), punc(':'), s(), unparseAsHTML(pa.value));

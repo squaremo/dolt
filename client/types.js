@@ -27,7 +27,7 @@ decodeObject.method(Object, function(obj) {
     return res;
 });
 
-var decodeSpecial = procedure ('decodeSpecial');
+var decodeSpecial = procedure('decodeSpecial');
 decodeSpecial.method('undefined', Object, function() {
     return undefined;
 });
