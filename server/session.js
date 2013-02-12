@@ -108,23 +108,25 @@ Session.fromId = function (id) {
     return new Session(id);
 }
 
-Session.prototype.eval = function (expr, variable) {
+Session.prototype.eval = function (expr, index) {
     var self = this;
 
-    function findOrAppendEntry(variable, list) {
-        if (variable) {
-            for (var i = 0; i < list.length; i++)
-                if (list[i].variable === variable) return list[i];
+    function findOrAppendEntry(index, list) {
+        if (list[index]) {
+            return list[index];
         }
-
-        var entry = {variable: '$' + (list.length + 1)}; // just to be one-based
-        list.push(entry);
-        return entry;
+        else {
+            var entry = {
+                variable: '$' + (index + 1)
+            }; // just to be one-based
+            list[index] = entry;
+            return entry;
+        }
     }
 
     return this.state.then(function (state) {
         var history = state.history;
-        var history_entry = findOrAppendEntry(variable, history);
+        var history_entry = findOrAppendEntry(index, history);
         history_entry.in_progress = true;
         history_entry.expr = expr;
 
@@ -137,6 +139,7 @@ Session.prototype.eval = function (expr, variable) {
         });
         ev.on('done', function () {
             history_entry.in_progress = false;
+            console.log({result: ev.json});
             history_entry.result = interp_util.resolveSequences(ev.json);
             self.saveState();
             d.resolve(history_entry);
