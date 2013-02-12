@@ -100,11 +100,14 @@ Evaluation.prototype.evaluate = function (env, expr, variable) {
 // Convert 'cons' specials in the given extended JSON into arrays
 function resolveSequences(val) {
     if (typeof(val) === 'object' && val !== null && val['!'] === 'cons') {
-        var tail = val.tail = resolveSequences(val.tail);
-        if (tail instanceof Array) {
-            tail.unshift(val.head);
-            return tail;
+        if (val.array === undefined) {
+            var tail = resolveSequences(val.tail);
+            if (tail instanceof Array) {
+                tail.unshift(val.head);
+                val.array = tail;
+            }
         }
+        return val.array;
     }
 
     return val;
