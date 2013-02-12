@@ -63,15 +63,15 @@ var Presentation = (function(Widget) {
     });
 
     function ArrayWidget(arr, parent) {
-        this.arr = arr;
+        this.arr = new Array(arr.length);
         this.parent = parent;
 
         var size = 0;
         var separators = 0;
 
         for (var i = 0; i < arr.length; i++) {
-            arr[i] = widgetize(arr[i], this);
-            size += visualSize(arr[i]) + separators;
+            this.arr[i] = widgetize(arr[i], this);
+            size += visualSize(this.arr[i]) + separators;
             separators = 2;
         }
 
@@ -101,7 +101,7 @@ var Presentation = (function(Widget) {
                 var td = $('<td/>');
                 tab.append($('<tr/>').append(td));
                 Widget.renderInto(arr[i], td);
-                if (i < this.arr.length - 1)
+                if (i < arr.length - 1)
                     td.append(',');
             }
         }
@@ -118,7 +118,7 @@ var Presentation = (function(Widget) {
     var encoded_property_name_re = /^!+$/;
 
     function ObjectWidget(obj, parent) {
-        this.obj = obj;
+        this.obj = {};
         this.parent = parent;
         this.keys = Object.getOwnPropertyNames(obj).sort();
 
@@ -135,15 +135,14 @@ var Presentation = (function(Widget) {
                 // I.e., we decode '!!'  first, then '!!!', then
                 // '!!!!', etc.
                 var decoded = k.substring(1);
-                obj[decoded] = widgetize(obj[k], this);
-                delete obj[k];
+                this.obj[decoded] = widgetize(obj[k], this);
                 k = this.keys[i] = decoded;
             }
             else {
-                obj[k] = widgetize(obj[k], this);
+                this.obj[k] = widgetize(obj[k], this);
             }
 
-            size += visualSize(obj[k]) + k.length + separators;
+            size += visualSize(this.obj[k]) + k.length + separators;
             separators = 4;
         }
 
