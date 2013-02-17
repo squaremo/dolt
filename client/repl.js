@@ -77,47 +77,66 @@ NotebookModel.prototype.addEntry = function(expr, kind) {
     this.session.send(JSON.stringify({expr: expr, index: index}));
 };
 
+
 function NotebookView(container) {
+    Widget.call(this);
     this.container = container;
     this.entries = [];
 }
 
 NotebookView.prototype = inheritFrom(Widget);
 
-NotebookView.prototype.repaint = function() {
-    var lines = $('<table/>').addClass('entries');;
+NotebookView.prototype.repaintAll = function(entries) {
+    this.entries = new Array(entries.length);
+    var self = this;
+    entries.forEach(function(entry, index) {
+        self.updateEntry(entry, index);
+    });
+    var lines = $('<table/>').addClass('entries');
     renderInto(this, lines);
     this.container.empty();
     this.container.append(lines);
 };
 
-NotebookView.prototype.handleText = function(text) {
-    console.log({text: text});
+NotebookView.prototype.repaintOne = function(entry, index) {
+    var old = this.entries[index];
+    this.updateEntry(entry, index);
+    var newentry = this.entries[index];
+    if (old)
+        old.replaceWith(newentry);
+    else
+        // %%% kind of a cheat
+        this.container.find('.last').before(newentry);
+};
+
+NotebookView.prototype.updateEntry = function(entry, index) {
+    var line = $('<tr/>');
+    var margin = $('<td/>').addClass('binding');
+    if (entry.variable) {
+        margin.append($('<var/>').text(entry.variable));
+    }
+    line.append(margin);
+    
+    var entryContainer = $('<td/>').addClass('entry');
+    var entryWidget = new EvalWidget(entry);
+    renderInto(entryWidget, entryContainer);
+    line.append(entryContainer);
+    this.entries[index] = line;
 };
 
 render.method(NotebookView, Function, function(view, append) {
-    view.entries.forEach(function(entry) {
-        var line = $('<tr/>');
-        var margin = $('<td/>').addClass('binding');
-        if (entry.variable) {
-            margin.append($('<var/>').text(entry.variable));
-        }
-        line.append(margin);
-
-        var entryContainer = $('<td/>').addClass('entry');
-        var entryWidget = new EvalWidget(entry);
-        renderInto(entryWidget, entryContainer);
-        line.append(entryContainer);
+    view.entries.forEach(function(line) {
         append(line);
     });
     var box = $('<input/>');
     var input = $('<form/>').append(box);
     input.submit(function() {
-        view.handleText(box.val());
+        view.fire('input', box.val());
+        box.val('');
         return false;
     });
 
-    var promptLine = $('<tr/>');
+    var promptLine = $('<tr/>').addClass('last');
     promptLine.append($('<td/>').addClass('prompt')
                       .append($('<label/>').text('>')));
     promptLine.append($('<td/>').addClass('gettext')
@@ -150,14 +169,18 @@ $(function() {
     var nb = new NotebookModel('/eval');
     var nv = new NotebookView($('#repl'));
 
-    nb.observe('*', function() {
-        console.log({entries: nb.get()});
-        nv.entries = nb.get();
-        nv.repaint();
+    nb.observe('changed', function() {
+        var entries = nb.get();
+        nv.repaintAll(entries);
     });
-    nv.handleText = function(expr) {
+    nb.observe('elementChanged', function(index) {
+        var entry = nb.at(index);
+        nv.repaintOne(entry, index);
+    });
+
+    nv.observe('input', function(expr) {
         nb.addEntry(expr, 'eval');
-    };
+    });
 
     function selectSession(id) {
         $('#session').text(id);

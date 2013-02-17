@@ -8,7 +8,9 @@ var Presentation = (function(Widget) {
     var render = Widget.render;
 
     // A superclass and API
-    function Presentation() {}
+    function Presentation() {
+        Widget.call(this);
+    }
     Presentation.prototype = inheritFrom(Widget);
 
     Presentation.prototype.isCompact = function () {

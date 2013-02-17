@@ -1,19 +1,9 @@
-// This is the same as the conventional
-// `Sub.prototype = new Super();`
-// except that it avoids running Super (but that can of course be done
-// in Sub if desired).
-function inheritFrom(parentConstructor) {
-    function constr() {}
-    constr.prototype = parentConstructor.prototype;
-    return new constr();
-}
-
 var Widget = (function() {
 
-    // A super-class for value presentations, which will also hold our
-    // API.
     function Widget() {
+        Observable.call(this);
     }
+    Widget.prototype = inheritFrom(Observable);
 
     var render = procedure('render');
     Widget.render = render;
@@ -46,6 +36,7 @@ var Widget = (function() {
 })();
 
 function ExpressionWidget(expr) {
+    Widget.call(this);
     this.expr = expr;
 }
 
