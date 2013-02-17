@@ -1,42 +1,24 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Super REPL</title>
-  <script src="http://code.jquery.com/jquery-1.8.2.min.js">
-  </script>
-  <script src="http://cdn.sockjs.org/sockjs-0.3.min.js">
-  </script>
-  <script src="parser.js">
-  </script>
-  <script src="pmd.js">
-  </script>
-  <script src="types.js">
-  </script>
-  <script src="widgets.js">
-  </script>
-  <script src="presentations.js">
-  </script>
-  <script src="models.js">
-  </script>
-  <script src="repl.js">
-  </script>
+  <title>Dolt: Notebooks</title>
   <link rel="stylesheet" type="text/css" href="values.css"/>
 </head>
 <body>
-  <header id="errors">
+  <header>
+    <h1>Notebooks</h1>
   </header>
-  <header id="sessions">
+  <section id="sessions">
     <form action="/new" method="POST">
       <input type="submit" value="New session"></input>
     </form>
     <nav>
-      <a href="#" class="current">Choose session</a>
-      {{#sessions}}
-        <a href="#{{id}}">{{id}}</a>
-      {{/sessions}}
+      <ul>
+        {{#sessions}}
+        <li><a href="notebook#{{id}}">{{id}}</a></li>
+        {{/sessions}}
+      </ul>
     </nav>
-  </header>
-  <section id="repl">
   </section>
 </body>
 </html>

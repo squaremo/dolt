@@ -42,9 +42,14 @@ app.get('/(index(.html)?)?', function(req, res) {
     });
 });
 
+app.get('/notebook(.html)?', function(req, res) {
+    mu.compileAndRender('notebook.html', {})
+        .pipe(res);
+});
+
 app.post('/new', function(req, res) {
     var session = Session.newSession();
-    res.writeHead(303, 'Session created', {'Location': '/#' + session.id});
+    res.writeHead(303, 'Session created', {'Location': '/notebook#' + session.id});
     session.saveState().then(function() {
         mu.compileAndRender('new.html', {session: session.id}).pipe(res);
     });

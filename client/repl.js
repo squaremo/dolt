@@ -160,8 +160,7 @@ $(function() {
     };
 
     function selectSession(id) {
-        $('#sessions a').removeClass('current');
-        $('#sessions').find('a[href="#' + id + '"]').addClass('current');
+        $('#session').text(id);
     }
 
     function maybeStartSession() {
