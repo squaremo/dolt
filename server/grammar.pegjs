@@ -555,7 +555,7 @@ ComprehensionExpression
     {
       name = (name !== "") ? name[1] : false;
       var expr = yield;
-      tail.unshift([,,,name,generate,guard]);
+      tail.unshift([,,,[name],generate,guard]);
 
       for (var i=tail.length-1; i >= 0; i--) {
         expr = {
