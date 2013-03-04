@@ -41,19 +41,16 @@ var Presentation = (function(Widget) {
     }
 
     render.method(Object, Function, renderPrimitive);
-    render.method(null, Function, function(val, app) {
-        return renderPrimitive('null', app, 'null');
-    });
-    render.method(String, Function, function(val, app) {
-        return renderPrimitive('"' + val + '"', app);
-    });
-
     visualSize.method(Object, function(val) {
         return String(val).length;
     });
 
-    render.method(String, Function, function(str, appender) {
-        appender($('<code/>').addClass('string').text('"' + str + '"'));
+    render.method(null, Function, function(val, app) {
+        return renderPrimitive('null', app, 'null');
+    });
+
+    render.method(String, Function, function(val, app) {
+        return renderPrimitive('"' + val + '"', app);
     });
     visualSize.method(String, function(str) {
         return str.length + 2;
