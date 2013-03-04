@@ -24,8 +24,8 @@ NotebookModel.prototype.connectToSession = function(sessionId) {
     if (this.session) this.session.close();
     var s = this.session = new SockJS(this.url);
     var self = this;
-    // Handshake by passing the Session ID; expect (below) the history
-    // in return
+    // Handshake by passing the Session ID; expect the history in
+    // return
     s.onopen = function() { s.send(self.sessionId); };
     s.onmessage = function(m) {
         s.onmessage = function(m) {
@@ -68,6 +68,10 @@ render.method(Waiting, Function, function(_, append) {
 
 NotebookModel.prototype.addEntry = function(expr, kind) {
     var index = this.get().length;
+    this.setEntry(index, expr, kind);
+};
+
+NotebookModel.prototype.setEntry = function(index, expr, kind) {
     var entry = {
         expr: expr,
         kind: kind,
@@ -77,20 +81,19 @@ NotebookModel.prototype.addEntry = function(expr, kind) {
     this.session.send(JSON.stringify({expr: expr, index: index}));
 };
 
-
 function NotebookView(container) {
     Widget.call(this);
     this.container = container;
-    this.entries = [];
+    this.children = [];
 }
-
 NotebookView.prototype = inheritFrom(Widget);
 
-NotebookView.prototype.repaintAll = function(entries) {
-    this.entries = new Array(entries.length);
+// Paint everything from scratch
+NotebookView.prototype.paint = function(entries) {
+    this.children = new Array(entries.length);
     var self = this;
     entries.forEach(function(entry, index) {
-        self.updateEntry(entry, index);
+        self.createChild(entry, index);
     });
     var lines = $('<table/>').addClass('entries');
     renderInto(this, lines);
@@ -98,40 +101,64 @@ NotebookView.prototype.repaintAll = function(entries) {
     this.container.append(lines);
 };
 
-NotebookView.prototype.repaintOne = function(entry, index) {
-    var old = this.entries[index];
-    this.updateEntry(entry, index);
-    var newentry = this.entries[index];
-    if (old)
-        old.replaceWith(newentry);
-    else
-        // %%% kind of a cheat
-        this.container.find('.last').before(newentry);
+NotebookView.prototype.updateChild = function(entry, index) {
+    var child = this.children[index];
+    if (child) {
+        child.widget.update(entry);
+        // In lieu of a proper model / whatever
+        if (entry.variable) child.margin.text(entry.variable);
+    }
+    else {
+        var child = this.createChild(entry, index);
+        // %% bit of a cheat
+        this.container.find('.last').before(child.row);
+    }
 };
 
-NotebookView.prototype.updateEntry = function(entry, index) {
-    var line = $('<tr/>');
+NotebookView.prototype.createChild = function(entry, index) {
+    var widget = new EvalWidget(entry);
+    var self = this;
+
+    widget.observe('click', function() { widget.edit(); });
+    widget.observe('submit', function(expr) {
+        self.fire('updateEntry', {index: index, expr: expr});
+        widget.display();
+    });
+
+    var row = $('<tr/>');
     var margin = $('<td/>').addClass('binding');
     if (entry.variable) {
         margin.append($('<var/>').text(entry.variable));
     }
-    line.append(margin);
-    
-    var entryContainer = $('<td/>').addClass('entry');
-    var entryWidget = new EvalWidget(entry);
-    renderInto(entryWidget, entryContainer);
-    line.append(entryContainer);
-    this.entries[index] = line;
+    row.append(margin);
+    var container = $('<td/>').addClass('entry');
+    renderInto(widget, container);
+    row.append(container);
+
+    widget.observe('needRepaint', function() {
+        container.empty();
+        renderInto(widget, container);
+    });
+
+    var child = {
+        widget: widget,
+        container: container,
+        margin: margin,
+        row: row
+    };
+    this.children[index] = child;
+    return child;
 };
 
 render.method(NotebookView, Function, function(view, append) {
-    view.entries.forEach(function(line) {
-        append(line);
+    view.children.forEach(function(child) {
+        append(child.row);
     });
-    var box = $('<input/>');
+
+    var box = $('<input/>').addClass('gettext');
     var input = $('<form/>').append(box);
     input.submit(function() {
-        view.fire('input', box.val());
+        view.fire('submit', box.val());
         box.val('');
         return false;
     });
@@ -139,18 +166,18 @@ render.method(NotebookView, Function, function(view, append) {
     var promptLine = $('<tr/>').addClass('last');
     promptLine.append($('<td/>').addClass('prompt')
                       .append($('<label/>').text('>')));
-    promptLine.append($('<td/>').addClass('gettext')
-                      .append(input));
+    promptLine.append($('<td/>').append(input));
     append(promptLine);
 });
 
 function EvalWidget(entry) {
+    Widget.call(this);
     this.entry = entry;
+    this.editing = false;
 }
 EvalWidget.prototype = inheritFrom(Widget);
 
 render.method(EvalWidget, Function, function(w, append) {
-    var expr = new ExpressionWidget(w.entry.expr);
     var result;
     if (w.entry.error) {
         result = widgetize(new Error(w.entry.error));
@@ -158,12 +185,45 @@ render.method(EvalWidget, Function, function(w, append) {
     else {
         result = widgetize(w.entry.result);
     }
-    var input = $('<kbd/>').addClass('expr');
-    renderInto(expr, input);
+
+    var input;
+    if (w.editing) {
+        var text = $('<input/>').addClass('gettext').val(w.entry.expr);
+        input = $('<form/>').append(text);
+        input.submit(function() { w.fire('submit', text.val()); return false; });
+    }
+    else {
+        input = $('<kbd/>').addClass('expr');
+        // %% inline controller
+        var expr = new ExpressionWidget(w.entry.expr);
+        renderInto(expr, input);
+        input.click(function() { w.fire('click'); });
+    }
     var output = $('<code/>').addClass('result');
     if (result !== undefined) renderInto(result, output);
     append(input); append(output);
 });
+
+EvalWidget.prototype.edit = function() {
+    if (!this.editing) {
+        this.editing = true;
+        this.fire('needRepaint');
+    }
+};
+
+EvalWidget.prototype.display = function() {
+    if (this.editing) {
+        this.editing = false;
+        this.fire('needRepaint');
+    }
+};
+
+// %% Ought this use the Observer protocol? (and if so, can it be
+// %% factored out)
+EvalWidget.prototype.update = function(entry) {
+    this.entry = entry;
+    this.fire('needRepaint');
+};
 
 $(function() {
     var nb = new NotebookModel('/eval');
@@ -171,15 +231,18 @@ $(function() {
 
     nb.observe('changed', function() {
         var entries = nb.get();
-        nv.repaintAll(entries);
+        nv.paint(entries);
     });
     nb.observe('elementChanged', function(index) {
         var entry = nb.at(index);
-        nv.repaintOne(entry, index);
+        nv.updateChild(entry, index);
     });
 
-    nv.observe('input', function(expr) {
+    nv.observe('submit', function(expr) {
         nb.addEntry(expr, 'eval');
+    });
+    nv.observe('updateEntry', function(event) {
+        nb.setEntry(event.index, event.expr, 'eval');
     });
 
     function selectSession(id) {

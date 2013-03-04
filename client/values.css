@@ -2,15 +2,15 @@
     width: 100%;
 }
 
-.gettext input { border: 0; outline: 0; width: 100%; }
-.prompt { text-align: right; }
+input.gettext { border: 0; width: 100%; font-family: monospace; font-size: 1.0em; }
+.prompt { background-color: #ccc; }
 
 #repl table.entries {
     border: 0;
     width: 96%;
 }
 
-.binding {
+.binding, .prompt {
     font-weight: bold;
     background: #eee;
     width: 80px;
